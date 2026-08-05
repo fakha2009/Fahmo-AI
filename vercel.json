@@ -1,0 +1,33 @@
+{
+  "cleanUrls": true,
+  "rewrites": [
+    {
+      "source": "/((?!public|src|config\\.js|manifest\\.webmanifest|sw\\.js|index\\.html).*)",
+      "destination": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+        { "key": "X-Frame-Options", "value": "SAMEORIGIN" },
+        { "key": "Permissions-Policy", "value": "camera=(self), microphone=(), geolocation=(), payment=()" },
+        { "key": "Content-Security-Policy", "value": "default-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self' https:; script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src 'self' blob:; worker-src 'self' blob:; manifest-src 'self'" }
+      ]
+    },
+    {
+      "source": "/(index.html|config.js|manifest.webmanifest|sw.js)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }
+      ]
+    },
+    {
+      "source": "/(public|src)/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=3600, stale-while-revalidate=86400" }
+      ]
+    }
+  ]
+}

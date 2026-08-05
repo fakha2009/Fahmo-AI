@@ -1,0 +1,82 @@
+{
+  "id": "/",
+  "name": "Фаҳмо AI",
+  "short_name": "Фаҳмо AI",
+  "description": "Из документа — в понятный план",
+  "lang": "ru",
+  "dir": "ltr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": [
+    "window-controls-overlay",
+    "standalone",
+    "minimal-ui"
+  ],
+  "orientation": "any",
+  "background_color": "#F7F7FB",
+  "theme_color": "#6C4DFF",
+  "categories": [
+    "productivity",
+    "utilities"
+  ],
+  "icons": [
+    {
+      "src": "/public/assets/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/public/assets/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/public/assets/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Новый анализ",
+      "short_name": "Анализ",
+      "url": "/analyze",
+      "icons": [
+        {
+          "src": "/public/assets/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "История",
+      "short_name": "История",
+      "url": "/history",
+      "icons": [
+        {
+          "src": "/public/assets/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/public/screenshots/desktop-home.png",
+      "sizes": "1440x1100",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Главная страница Фаҳмо AI на компьютере"
+    },
+    {
+      "src": "/public/screenshots/mobile-home.png",
+      "sizes": "390x844",
+      "type": "image/png",
+      "label": "Главная страница Фаҳмо AI на смартфоне"
+    }
+  ]
+}

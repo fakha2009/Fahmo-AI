@@ -1,0 +1,19 @@
+{
+  "name": "fahmo-ai-frontend",
+  "version": "1.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Production-oriented, dependency-free adaptive PWA frontend for Fahmo AI.",
+  "scripts": {
+    "start": "node server.mjs",
+    "dev": "node server.mjs --dev",
+    "test": "node --test tests/*.test.mjs",
+    "check": "node scripts/check-syntax.mjs",
+    "verify": "npm run check && npm test",
+    "smoke": "node scripts/smoke.mjs",
+    "validate": "npm run verify && npm run smoke"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
