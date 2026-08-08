@@ -11,5 +11,5 @@ window.__FAHMO_CONFIG__ = Object.freeze({
   appUrl: 'http://127.0.0.1:4173',
   environment: 'development',
   allowApiSettings: true,
-  appVersion: '1.1.0'
+  appVersion: '1.1.2'
 });

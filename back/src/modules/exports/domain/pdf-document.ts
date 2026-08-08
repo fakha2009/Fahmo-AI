@@ -24,6 +24,14 @@ export interface PdfWarningRow {
   severity: PdfSeverity;
 }
 
+export interface PdfImportantDataRow {
+  label: string;
+  value: string;
+  confidence: PdfConfidence;
+  sourcePage: number | null;
+  sourceExcerpt: string | null;
+}
+
 export interface PdfUserEditRow {
   version: number;
   changeSource: PdfChangeSource;
@@ -40,6 +48,7 @@ export interface PdfExportData {
   overallConfidence: PdfConfidence;
   summary: string;
   simpleExplanation: string;
+  importantData: PdfImportantDataRow[];
   warnings: PdfWarningRow[];
   tasks: PdfTaskRow[];
   userEdits: PdfUserEditRow[];
@@ -64,6 +73,7 @@ const LABELS = {
   disclaimer: "Экспорт из анализа · оригинальный документ не включён",
   sectionSummary: "Объяснение",
   sectionSimple: "Простая версия",
+  sectionImportantData: "Важные данные",
   sectionTasks: "Задачи",
   sectionWarnings: "Предупреждения",
   sectionUserEdits: "Пользовательские изменения",
@@ -78,6 +88,7 @@ const LABELS = {
   documentType: "Тип документа",
   version: "версия",
   changedFields: "Изменённые поля",
+  source: "Источник",
 } as const;
 
 function label(key: keyof typeof LABELS): string {
@@ -121,6 +132,13 @@ export class PdfExportRenderer {
 
     writer.drawSection(label("sectionSimple"));
     writer.drawParagraph(data.simpleExplanation);
+
+    if (data.importantData.length > 0) {
+      writer.drawSection(label("sectionImportantData"));
+      for (const item of data.importantData) {
+        writer.drawImportantData(item);
+      }
+    }
 
     writer.drawSection(label("sectionTasks"));
     if (data.tasks.length === 0) {
@@ -231,6 +249,27 @@ class PageWriter {
       for (const line of this.wrap(task.description, 9.5)) {
         this.ensureSpace(LINE_HEIGHT);
         this.drawText(line, 9.5, false);
+        this.y -= LINE_HEIGHT;
+      }
+    }
+    this.y -= PARAGRAPH_GAP;
+  }
+
+  drawImportantData(item: PdfImportantDataRow): void {
+    this.ensureSpace(45);
+    for (const line of this.wrap(`${item.label}: ${item.value}`, 10.5)) {
+      this.ensureSpace(LINE_HEIGHT);
+      this.drawText(line, 10.5, true);
+      this.y -= LINE_HEIGHT;
+    }
+    const source = [
+      item.sourcePage === null ? "" : `${label("source")}: стр. ${item.sourcePage}`,
+      item.sourceExcerpt ?? "",
+    ].filter(Boolean).join(" · ");
+    if (source !== "") {
+      for (const line of this.wrap(source, 8.5)) {
+        this.ensureSpace(LINE_HEIGHT);
+        this.drawText(line, 8.5, false, dim);
         this.y -= LINE_HEIGHT;
       }
     }

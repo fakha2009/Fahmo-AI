@@ -17,6 +17,9 @@ function sampleData(): PdfExportData {
     overallConfidence: "high",
     summary: "Договор аренды квартиры на 11 месяцев. Оплата — 5000 сомони в месяц.",
     simpleExplanation: "Вы арендуете квартиру 11 месяцев и платите 5000 сомони каждый месяц.",
+    importantData: [
+      { label: "Сумма", value: "5000 TJS", confidence: "high", sourcePage: 2, sourceExcerpt: "5000 сомони в месяц" },
+    ],
     warnings: [
       { code: "CRITICAL_DATE", message: "Срок договора истекает 31.12.2026", severity: "critical" },
       { code: "NOTE", message: "Пункт 4.2 противоречит пункту 7.1", severity: "warning" },
@@ -57,6 +60,8 @@ test("PdfExportRenderer: со встроенным TTF сохраняется к
   assert.ok(text.includes("Договор аренды №5"));
   assert.ok(text.includes("Объяснение"));
   assert.ok(text.includes("Простая версия"));
+  assert.ok(text.includes("Важные данные"));
+  assert.ok(text.includes("5000 TJS"));
   assert.ok(text.includes("Задачи"));
   assert.ok(text.includes("Предупреждения"));
   assert.ok(text.includes("Пользовательские изменения"));

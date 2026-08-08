@@ -623,24 +623,19 @@ function handleInitialMode(search) {
   initialModeHandled = true;
   const mode = search.get('mode');
   if (mode === 'text') {
-    activeMode = 'text';
-    render();
     setTimeout(() => document.querySelector('#document-text')?.focus(), 0);
   } else if (mode === 'camera' || mode === 'files') {
-    activeMode = 'files';
-    render();
     const selector = mode === 'camera' ? '[data-take-photo]' : '[data-choose-file]';
     setTimeout(() => document.querySelector(selector)?.focus({ preventScroll: true }), 0);
   } else if (mode === 'paste') {
-    activeMode = 'files';
-    render();
     showToast({ title: t('pasteImage'), message: 'Нажмите Ctrl+V или Cmd+V.', type: 'info' });
   }
 }
 
 export async function analyzePage({ search }) {
   draft = normalizeDraft(await getDraft(ACTIVE_DRAFT_ID));
-  activeMode = search.get('mode') === 'text' ? 'text' : draft.sourceMode || 'files';
+  const requestedMode = search.get('mode');
+  activeMode = requestedMode === 'text' ? 'text' : ['camera', 'files', 'paste'].includes(requestedMode) ? 'files' : draft.sourceMode || 'files';
   render();
   bindPaste();
   handleInitialMode(search);

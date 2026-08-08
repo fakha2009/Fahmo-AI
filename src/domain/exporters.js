@@ -6,13 +6,12 @@ function parseDateValue(value) {
   if (!value) return null;
   const raw = String(value).trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
-    const date = new Date(`${raw}T09:00:00`);
-    return Number.isNaN(date.getTime()) ? null : date;
+    const [year, month, day] = raw.split('-').map(Number);
+    return validLocalDate(year, month, day);
   }
   const numeric = raw.match(/\b([0-3]?\d)[.\/-]([01]?\d)[.\/-]((?:19|20)\d{2})\b/);
   if (numeric) {
-    const date = new Date(Number(numeric[3]), Number(numeric[2]) - 1, Number(numeric[1]), 9, 0, 0);
-    return Number.isNaN(date.getTime()) ? null : date;
+    return validLocalDate(Number(numeric[3]), Number(numeric[2]), Number(numeric[1]));
   }
   const months = {
     январь: 0, января: 0, январ: 0, январи: 0, january: 0,
@@ -30,15 +29,48 @@ function parseDateValue(value) {
   };
   const named = raw.toLowerCase().match(/\b([0-3]?\d)\s+([a-zа-яёӣқғҳҷў]+)\s+((?:19|20)\d{2})\b/u);
   if (named && months[named[2]] != null) {
-    const date = new Date(Number(named[3]), months[named[2]], Number(named[1]), 9, 0, 0);
-    return Number.isNaN(date.getTime()) ? null : date;
+    return validLocalDate(Number(named[3]), months[named[2]] + 1, Number(named[1]));
   }
   return null;
+}
+
+function validLocalDate(year, month, day) {
+  const date = new Date(year, month - 1, day, 0, 0, 0, 0);
+  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day ? date : null;
+}
+
+function validTaskTime(value) {
+  if (!value) return null;
+  const match = /^(\d{1,2}):(\d{2})$/.exec(String(value));
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  return hours <= 23 && minutes <= 59 ? { hours, minutes } : null;
+}
+
+export function calendarTaskStatus(task, now = new Date()) {
+  const date = parseDateValue(task?.dueDate);
+  if (!date) return 'missing';
+  const time = validTaskTime(task?.dueTime);
+  if (task?.dueTime && !time) return 'missing';
+  if (time) date.setHours(time.hours, time.minutes, 0, 0);
+  else date.setHours(23, 59, 59, 999);
+  return date.getTime() <= now.getTime() ? 'past' : 'eligible';
 }
 
 function icsDate(date) {
   const pad = (value) => String(value).padStart(2, '0');
   return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}T${pad(date.getHours())}${pad(date.getMinutes())}00`;
+}
+
+function icsDateOnly(date) {
+  const pad = (value) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}`;
+}
+
+function icsUtcDate(date) {
+  const pad = (value) => String(value).padStart(2, '0');
+  return `${date.getUTCFullYear()}${pad(date.getUTCMonth() + 1)}${pad(date.getUTCDate())}T${pad(date.getUTCHours())}${pad(date.getUTCMinutes())}${pad(date.getUTCSeconds())}Z`;
 }
 
 function escapeIcs(value) {
@@ -52,13 +84,17 @@ function escapeIcs(value) {
 export function createIcsBlob(task, options = {}) {
   const start = parseDateValue(task.dueDate);
   if (!start) throw new Error('Task date is missing or cannot be parsed');
-  if (task.dueTime && /^\d{1,2}:\d{2}$/.test(task.dueTime)) {
-    const [hours, minutes] = task.dueTime.split(':').map(Number);
-    start.setHours(hours, minutes, 0, 0);
-  }
-  const end = new Date(start.getTime() + (options.durationMinutes ?? 60) * 60_000);
-  const now = new Date();
-  const alarm = Number(task.reminderMinutes ?? options.reminderMinutes ?? 60);
+  const now = options.now ?? new Date();
+  const status = calendarTaskStatus(task, now);
+  if (status === 'past') throw new Error('Past dates cannot be added to the calendar');
+  if (status === 'missing') throw new Error('Task date or time is invalid');
+  const time = validTaskTime(task.dueTime);
+  const allDay = !time;
+  if (time) start.setHours(time.hours, time.minutes, 0, 0);
+  const end = allDay
+    ? new Date(start.getFullYear(), start.getMonth(), start.getDate() + 1)
+    : new Date(start.getTime() + (options.durationMinutes ?? 60) * 60_000);
+  const alarm = Number(task.reminderMinutes ?? options.reminderMinutes ?? 0);
   const lines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
@@ -67,9 +103,9 @@ export function createIcsBlob(task, options = {}) {
     'METHOD:PUBLISH',
     'BEGIN:VEVENT',
     `UID:${uid('event')}@fahmo.local`,
-    `DTSTAMP:${icsDate(now)}Z`,
-    `DTSTART:${icsDate(start)}`,
-    `DTEND:${icsDate(end)}`,
+    `DTSTAMP:${icsUtcDate(now)}`,
+    allDay ? `DTSTART;VALUE=DATE:${icsDateOnly(start)}` : `DTSTART:${icsDate(start)}`,
+    allDay ? `DTEND;VALUE=DATE:${icsDateOnly(end)}` : `DTEND:${icsDate(end)}`,
     `SUMMARY:${escapeIcs(task.title)}`,
     `DESCRIPTION:${escapeIcs(task.description || task.source?.excerpt || '')}`,
     task.location ? `LOCATION:${escapeIcs(task.location)}` : '',

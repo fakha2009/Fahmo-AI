@@ -49,9 +49,19 @@ test('mobile home keeps the document illustration readable', async ({ page }, te
 
 test('local example completes the document-to-plan flow', async ({ page }) => {
   await page.goto('/');
+  await page.evaluate(() => {
+    window.__shellReplacementCount = 0;
+    const app = document.querySelector('#app');
+    new MutationObserver((records) => {
+      // A single innerHTML assignment may emit separate removal/addition records.
+      // Count observer deliveries instead: a later second render arrives in a new batch.
+      if (records.some((record) => record.target === app)) window.__shellReplacementCount += 1;
+    }).observe(app, { childList: true });
+  });
   await page.getByRole('button', { name: /Попробовать на примере/u }).first().click();
   await expect(page).toHaveURL(/\/analyze\?mode=text/u);
   await expect(page.locator('#document-text')).toHaveValue(/Регистрация участников/u);
+  expect(await page.evaluate(() => window.__shellReplacementCount)).toBe(1);
   await page.getByRole('button', { name: /Создать понятный план/u }).click();
   await expect(page).toHaveURL(/\/result\//u, { timeout: 15_000 });
   await expect(page.getByRole('heading', { name: /Объявление о регистрации/u }).first()).toBeVisible();
@@ -197,6 +207,9 @@ test('a double cancel preserves a result that completed concurrently', async ({ 
   await expect.poll(() => animatedMascot.evaluate((image) => image.naturalWidth)).toBe(320);
   expect(await animatedMascot.evaluate((image) => new URL(image.currentSrc).pathname)).toBe('/public/assets/mascot-analyzing.webp');
   await expect.poll(() => page.locator('.process-mascot-wrap').evaluate((element) => getComputedStyle(element).animationName)).toBe('process-alive');
+  await page.locator('[data-process-root]').evaluate((element) => { element.dataset.persistenceToken = 'stable'; });
+  await page.waitForTimeout(1_700);
+  await expect(page.locator('[data-process-root]')).toHaveAttribute('data-persistence-token', 'stable');
   await page.evaluate(() => {
     const button = document.querySelector('[data-cancel-analysis]');
     button.click();

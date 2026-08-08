@@ -153,6 +153,11 @@ function mapTask(task: AnalysisResult["tasks"][number]): RemoteTask {
 
 function mapPersistedTask(task: TaskRecord): RemoteTask {
   const dueAt = task.dueAt?.toISOString() ?? null;
+  const allDay = task.dueAt !== null
+    && task.timezone === null
+    && task.dueAt.getUTCHours() === 0
+    && task.dueAt.getUTCMinutes() === 0
+    && task.dueAt.getUTCSeconds() === 0;
   const sourceRefs = Array.isArray(task.sourceData) ? task.sourceData : [];
   return {
     id: task.id,
@@ -162,7 +167,7 @@ function mapPersistedTask(task: TaskRecord): RemoteTask {
     completed: task.status === "completed",
     priority: task.priority,
     dueDate: dueAt?.slice(0, 10) ?? null,
-    dueTime: dueAt?.slice(11, 16) ?? null,
+    dueTime: allDay ? null : dueAt?.slice(11, 16) ?? null,
     location: null,
     reminderMinutes: null,
     source: mapUnknownSourceReference(sourceRefs[0]),

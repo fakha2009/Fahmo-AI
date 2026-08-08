@@ -286,6 +286,14 @@ test("createJob: ICS сохраняет taskIds в payload", async () => {
   assert.equal((job.payload as { taskIds: string[] }).taskIds[0], "task1");
 });
 
+test("createJob: ICS отклоняет прошедший срок", async () => {
+  const { service } = makeService({ now: new Date("2026-10-01T10:00:00.000Z") });
+  await assert.rejects(
+    service.createJob(OWNER, { kind: "ics", taskIds: ["task1"] }),
+    (error: unknown) => error instanceof AppError && error.code === "VALIDATION_ERROR"
+  );
+});
+
 test("createJob: PDF без analysisId → VALIDATION_ERROR", async () => {
   const { service } = makeService();
   await assert.rejects(service.createJob(OWNER, { kind: "pdf" }), (error: AppError) => {
@@ -336,6 +344,8 @@ test("runNext: ICS генерирует календарь с событиями
   assert.equal(done?.status, "done");
   const body = storage.objects.get(done!.storageKey!)!;
   assert.ok(body.toString("utf8").includes("BEGIN:VEVENT"));
+  assert.ok(body.toString("utf8").includes("DTSTART;VALUE=DATE:20260905"));
+  assert.ok(body.toString("utf8").includes("TRIGGER:-PT1440M"));
 });
 
 test("runNext: при ошибке генерации → FAILED с EXPORT_GENERATION_FAILED", async () => {

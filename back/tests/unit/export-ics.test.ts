@@ -41,8 +41,24 @@ test("ICS: UTC формат DTSTART без часового пояса", () => {
 
 test("ICS: TZID при наличии часового пояса", () => {
   const generator = new IcsGenerator({ productId: "-//Fahmo//RU", calendarName: "X" });
-  const ics = generator.generate([event({ timezone: "Asia/Dushanbe" })]);
-  assert.ok(ics.includes("DTSTART;TZID=Asia/Dushanbe:"));
+  const ics = generator.generate([event({ start: "2026-09-05T05:00:00.000Z", timezone: "Asia/Dushanbe" })]);
+  assert.ok(ics.includes("DTSTART;TZID=Asia/Dushanbe:20260905T100000"));
+  assert.ok(!ics.includes("DTSTART;TZID=Asia/Dushanbe:20260905T100000Z"));
+});
+
+test("ICS: дата без времени создаёт событие на весь день", () => {
+  const generator = new IcsGenerator({ productId: "-//Fahmo//RU", calendarName: "X" });
+  const ics = generator.generate([event({ allDay: true })]);
+  assert.ok(ics.includes("DTSTART;VALUE=DATE:20260905"));
+  assert.ok(ics.includes("DTEND;VALUE=DATE:20260906"));
+});
+
+test("ICS: напоминания сохраняются как VALARM относительно срока задачи", () => {
+  const generator = new IcsGenerator({ productId: "-//Fahmo//RU", calendarName: "X" });
+  const ics = generator.generate([event({ alarmMinutesBefore: [10, 5, 10] })]);
+  assert.equal((ics.match(/BEGIN:VALARM/g) ?? []).length, 2);
+  assert.ok(ics.includes("TRIGGER:-PT5M"));
+  assert.ok(ics.includes("TRIGGER:-PT10M"));
 });
 
 test("ICS: отменённые напоминания → STATUS:CANCELLED", () => {

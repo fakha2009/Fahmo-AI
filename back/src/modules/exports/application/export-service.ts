@@ -10,6 +10,7 @@ import {
   IcsExportRunner,
   PdfExportRunner,
   artifactToReadable,
+  isPastTaskDeadline,
   type ExportArtifact,
   type ExportDataPorts,
 } from "./export-runners";
@@ -49,7 +50,7 @@ export class ExportService {
     private readonly idFactory: () => string = () => randomHex(16)
   ) {
     this.pdfRunner = new PdfExportRunner(dataPorts, renderer, () => fontResolver.resolve());
-    this.icsRunner = new IcsExportRunner(dataPorts);
+    this.icsRunner = new IcsExportRunner(dataPorts, this.now);
     this.dataRunner = new DataExportRunner(dataPorts);
   }
 
@@ -214,6 +215,12 @@ export class ExportService {
           const task = await this.dataPorts.taskRepository.get(taskId);
           if (task === null || !this.belongsTo(task.sessionId, task.userId, owner)) {
             throw new AppError({ code: "NOT_FOUND", message: "Задача не найдена" });
+          }
+          if (task.dueAt === null) {
+            throw new AppError({ code: "VALIDATION_ERROR", message: "У задачи нет даты для календаря" });
+          }
+          if (isPastTaskDeadline(task, this.now())) {
+            throw new AppError({ code: "VALIDATION_ERROR", message: "Нельзя добавить в календарь прошедшую дату" });
           }
         }
         break;

@@ -18,7 +18,8 @@ import {
 } from '../core/repository.js';
 import { refreshReminderScheduler } from '../core/reminder-scheduler.js';
 import { getSettings } from '../core/settings.js';
-import { escapeAttribute, escapeHtml, formatDate, uid } from '../core/utils.js';
+import { escapeAttribute, escapeHtml, formatDate, todayIso, uid } from '../core/utils.js';
+import { calendarTaskStatus } from '../domain/exporters.js';
 import { confirmDialog, openDialog } from '../ui/dialogs.js';
 import { icon } from '../ui/icons.js';
 import { renderShell } from '../ui/shell.js';
@@ -189,6 +190,9 @@ function bindEvents() {
 
 function localDateParts(task) {
   if (!task?.dueAt) return { date: task?.dueDate ?? '', time: task?.dueTime ?? '' };
+  if (task.timezone == null && /T00:00:00\.000Z$/u.test(task.dueAt)) {
+    return { date: task.dueAt.slice(0, 10), time: '' };
+  }
   const value = new Date(task.dueAt);
   if (Number.isNaN(value.getTime())) return { date: '', time: '' };
   const offsetValue = new Date(value.getTime() - value.getTimezoneOffset() * 60_000).toISOString();
@@ -211,7 +215,7 @@ function taskForm(task) {
       <div class="field"><label for="task-title">${escapeHtml(t('taskName'))}</label><input id="task-title" class="input" name="title" maxlength="200" required autocomplete="off" value="${escapeAttribute(task?.title ?? '')}"></div>
       <div class="field"><label for="task-description">${escapeHtml(t('description'))}</label><textarea id="task-description" class="textarea" name="description" maxlength="5000" rows="4">${escapeHtml(task?.description ?? '')}</textarea></div>
       <div class="field-row">
-        <div class="field"><label for="task-date">${escapeHtml(t('date'))}</label><input id="task-date" class="input" type="date" name="date" value="${escapeAttribute(parts.date)}"></div>
+        <div class="field"><label for="task-date">${escapeHtml(t('date'))}</label><input id="task-date" class="input" type="date" name="date" min="${todayIso()}" value="${escapeAttribute(parts.date)}"></div>
         <div class="field"><label for="task-time">${escapeHtml(t('time'))}</label><input id="task-time" class="input" type="time" name="time" value="${escapeAttribute(parts.time)}"></div>
       </div>
       <div class="field"><label for="task-priority">${escapeHtml(t('priority'))}</label><select id="task-priority" class="select" name="priority"><option value="high" ${task?.priority === 'high' ? 'selected' : ''}>${escapeHtml(t('high'))}</option><option value="medium" ${!task || task.priority === 'medium' ? 'selected' : ''}>${escapeHtml(t('medium'))}</option><option value="low" ${task?.priority === 'low' ? 'selected' : ''}>${escapeHtml(t('low'))}</option></select></div>
@@ -263,14 +267,15 @@ function readTaskForm(form) {
   const time = String(data.get('time') ?? '');
   if (!title) throw new Error(t('taskName'));
   if (time && !date) throw new Error(`${t('date')}: ${t('errorTitle')}`);
-  const dueAt = date ? toDueAt(date, time || '09:00') : null;
+  if (date && calendarTaskStatus({ dueDate: date, dueTime: time || null }) === 'past') throw new Error(t('pastDateNotAllowed'));
+  const dueAt = date ? toDueAt(date, time) : null;
   const reminderValue = String(data.get('reminder') ?? '');
   const reminderMinutes = reminderValue === 'custom' ? Number(data.get('customMinutes')) : Number(reminderValue || 0);
   if (reminderMinutes && (!Number.isInteger(reminderMinutes) || reminderMinutes < 1 || reminderMinutes > 10080)) throw new Error(t('reminderMinutesLabel'));
-  if (reminderMinutes && !dueAt) throw new Error(`${t('reminder')}: ${t('date')} / ${t('time')}`);
+  if (reminderMinutes && (!dueAt || !time)) throw new Error(t('reminderNeedsTime'));
   const scheduledAt = reminderMinutes ? new Date(new Date(dueAt).getTime() - reminderMinutes * 60_000).toISOString() : null;
   if (scheduledAt && new Date(scheduledAt).getTime() <= Date.now()) throw new Error(`${t('reminder')}: ${t('overdue')}`);
-  return { title, description: description || null, priority: String(data.get('priority') ?? 'medium'), dueAt, reminderMinutes, scheduledAt, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' };
+  return { title, description: description || null, priority: String(data.get('priority') ?? 'medium'), dueAt, reminderMinutes, scheduledAt, timezone: dueAt && time ? (Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC') : null };
 }
 
 async function createTask(input) {
@@ -434,7 +439,11 @@ async function removeTaskFromAnalysis(taskId) {
 
 function toDueAt(date, time) {
   if (!date) return null;
-  const value = new Date(`${date}T${time || '09:00'}:00`);
+  if (!time) {
+    const value = new Date(`${date}T00:00:00.000Z`);
+    return Number.isNaN(value.getTime()) ? null : value.toISOString();
+  }
+  const value = new Date(`${date}T${time}:00`);
   return Number.isNaN(value.getTime()) ? null : value.toISOString();
 }
 

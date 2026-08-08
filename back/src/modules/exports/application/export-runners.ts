@@ -1,11 +1,13 @@
 import { Readable } from "node:stream";
 import type { AnalysisVersionRecord } from "../../analysis/application/analysis-version-repository";
 import type { AnalysisRecord } from "../../analysis/application/analysis-repository";
+import type { AnalysisResult } from "../../../validation/ai/analysis-result";
+import type { SourceReference } from "../../../validation/ai/source-reference";
 import type { TaskRecord } from "../../tasks/application/task-repository";
 import type { ReminderRecord } from "../../reminders/application/reminder-repository";
 import type { PreferencesRecord } from "../../preferences/application/preferences-repository";
 import type { ExportJobRecord } from "./export-repository";
-import type { PdfExportData, PdfTaskRow, PdfUserEditRow, PdfWarningRow } from "../domain/pdf-document";
+import type { PdfExportData, PdfImportantDataRow, PdfTaskRow, PdfUserEditRow, PdfWarningRow } from "../domain/pdf-document";
 import { PdfExportRenderer } from "../domain/pdf-document";
 import { IcsGenerator, type IcsEventInput } from "../domain/ics";
 import {
@@ -73,6 +75,7 @@ export class PdfExportRunner {
       overallConfidence: result.overallConfidence,
       summary: result.summary,
       simpleExplanation: result.simpleExplanation,
+      importantData: toImportantDataRows(result),
       warnings: result.warnings.map(toWarningRow),
       tasks: tasks.map(toTaskRow),
       userEdits: edits.filter((edit) => edit.userEdited !== null).map(toEditRow),
@@ -93,7 +96,8 @@ export class PdfExportRunner {
 /** ICS: календарные события напоминаний выбранных задач. */
 export class IcsExportRunner {
   constructor(
-    private readonly ports: Pick<ExportDataPorts, "taskRepository" | "reminderRepository">
+    private readonly ports: Pick<ExportDataPorts, "taskRepository" | "reminderRepository">,
+    private readonly now: () => Date = () => new Date()
   ) {}
 
   async run(_job: ExportJobRecord, taskIds: string[]): Promise<ExportArtifact> {
@@ -104,21 +108,32 @@ export class IcsExportRunner {
       (task): task is TaskRecord => task !== null
     );
     const reminders = await this.ports.reminderRepository.listByTaskIds(taskIds);
-    const taskById = new Map(tasks.map((task) => [task.id, task]));
-    const events: IcsEventInput[] = [];
+    const remindersByTask = new Map<string, ReminderRecord[]>();
     for (const reminder of reminders) {
-      const task = taskById.get(reminder.taskId);
-      if (task === undefined) {
-        continue;
-      }
+      if (reminder.status === "cancelled") continue;
+      const values = remindersByTask.get(reminder.taskId) ?? [];
+      values.push(reminder);
+      remindersByTask.set(reminder.taskId, values);
+    }
+    const events: IcsEventInput[] = [];
+    for (const task of tasks) {
+      if (task.dueAt === null || isPastTaskDeadline(task, this.now())) continue;
+      const alarmMinutesBefore = (remindersByTask.get(task.id) ?? [])
+        .map((reminder) => Math.round((task.dueAt!.getTime() - reminder.scheduledAt.getTime()) / 60_000))
+        .filter((minutes) => minutes > 0);
       events.push({
-        uid: `fahmo-${task.id}-${reminder.id}@fahmo.ai`,
+        uid: `fahmo-${task.id}@fahmo.ai`,
         title: task.title,
         description: task.description ?? null,
-        start: reminder.scheduledAt.toISOString(),
-        timezone: reminder.timezone ?? task.timezone ?? null,
-        status: reminder.status === "cancelled" ? "cancelled" : "confirmed",
+        start: task.dueAt.toISOString(),
+        timezone: task.timezone,
+        status: task.status === "cancelled" ? "cancelled" : "confirmed",
+        allDay: isAllDayTaskDeadline(task),
+        alarmMinutesBefore,
       });
+    }
+    if (events.length === 0) {
+      throw new Error("ics export requires at least one future task deadline");
     }
     const generator = new IcsGenerator({
       productId: "-//Fahmo AI//Fahmo AI Export//RU",
@@ -131,6 +146,25 @@ export class IcsExportRunner {
       body,
     };
   }
+}
+
+export function isAllDayTaskDeadline(task: Pick<TaskRecord, "dueAt" | "timezone">): boolean {
+  if (task.dueAt === null || task.timezone !== null) return false;
+  return task.dueAt.getUTCHours() === 0
+    && task.dueAt.getUTCMinutes() === 0
+    && task.dueAt.getUTCSeconds() === 0
+    && task.dueAt.getUTCMilliseconds() === 0;
+}
+
+export function isPastTaskDeadline(
+  task: Pick<TaskRecord, "dueAt" | "timezone">,
+  now: Date
+): boolean {
+  if (task.dueAt === null) return false;
+  if (!isAllDayTaskDeadline(task)) return task.dueAt.getTime() <= now.getTime();
+  const endOfDay = new Date(task.dueAt.getTime());
+  endOfDay.setUTCDate(endOfDay.getUTCDate() + 1);
+  return endOfDay.getTime() <= now.getTime();
 }
 
 /** User Data Export: JSON со всеми данными владельца без оригиналов. */
@@ -182,6 +216,72 @@ function toWarningRow(
     message: warningMessage(warning.code, warning.messageKey),
     severity: warning.severity,
   };
+}
+
+function toImportantDataRows(result: AnalysisResult): PdfImportantDataRow[] {
+  const rows: PdfImportantDataRow[] = [];
+  const add = (
+    label: string,
+    value: string | null,
+    confidence: PdfImportantDataRow["confidence"],
+    sources: SourceReference[]
+  ): void => {
+    const normalized = value?.replace(/\s+/gu, " ").trim() ?? "";
+    if (normalized === "") return;
+    const source = sources[0];
+    rows.push({
+      label,
+      value: normalized,
+      confidence,
+      sourcePage: source?.pageNumber ?? null,
+      sourceExcerpt: source?.excerpt?.replace(/\s+/gu, " ").trim() || null,
+    });
+  };
+
+  result.dates.forEach((item) => add(
+    item.kind === "deadline" ? "Срок" : "Дата",
+    item.rawText || item.isoDateTime || item.isoDate,
+    item.confidence,
+    item.sourceRefs
+  ));
+  result.amounts.forEach((item) => add(
+    "Сумма",
+    item.rawText || (item.value === null ? null : `${item.value}${item.currency === null ? "" : ` ${item.currency}`}`),
+    item.confidence,
+    item.sourceRefs
+  ));
+  result.locations.forEach((item) => add(
+    "Место",
+    item.rawText || item.address || item.name,
+    item.confidence,
+    item.sourceRefs
+  ));
+  result.contacts.forEach((item) => add(
+    item.type === "email" ? "Email" : item.type === "phone" ? "Телефон" : item.type === "link" ? "Ссылка" : "Контакт",
+    item.value || item.rawText,
+    item.confidence,
+    item.sourceRefs
+  ));
+  result.requiredDocuments.forEach((item) => add(
+    "Документ",
+    item.description === null ? item.name : `${item.name} — ${item.description}`,
+    item.confidence,
+    item.sourceRefs
+  ));
+  result.links.forEach((item) => add(
+    "Ссылка",
+    item.url || item.rawText,
+    item.confidence,
+    item.sourceRefs
+  ));
+
+  const seen = new Set<string>();
+  return rows.filter((row) => {
+    const key = `${row.label}:${row.value}`.toLocaleLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 const WARNING_MESSAGES: Record<string, string> = {

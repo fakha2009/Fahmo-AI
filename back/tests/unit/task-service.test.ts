@@ -134,6 +134,54 @@ test("TaskService.create: создаёт задачу с revision 1", async () =
   assert.equal(task.sessionId, "s1");
 });
 
+test("TaskService: не позволяет вручную создать задачу с прошедшим сроком", async () => {
+  const service = new TaskService(
+    new InMemoryTaskRepository(),
+    undefined,
+    () => new Date("2026-08-08T10:00:00.000Z")
+  );
+  await assert.rejects(
+    service.create(OWNER, {
+      analysisId: null,
+      title: "Просроченная задача",
+      description: null,
+      simpleTitle: "Просроченная задача",
+      simpleDescription: null,
+      assigneeText: null,
+      priority: "medium",
+      status: "pending",
+      dueAt: new Date("2026-08-08T09:59:00.000Z"),
+      timezone: "Asia/Dushanbe",
+      sourceData: null,
+      aiOriginal: null,
+    }),
+    (error: unknown) => error instanceof AppError && error.code === "VALIDATION_ERROR"
+  );
+});
+
+test("TaskService: дата без времени остаётся допустимой до конца дня", async () => {
+  const service = new TaskService(
+    new InMemoryTaskRepository(),
+    undefined,
+    () => new Date("2026-08-08T10:00:00.000Z")
+  );
+  const task = await service.create(OWNER, {
+    analysisId: null,
+    title: "Задача на сегодня",
+    description: null,
+    simpleTitle: "Задача на сегодня",
+    simpleDescription: null,
+    assigneeText: null,
+    priority: "medium",
+    status: "pending",
+    dueAt: new Date("2026-08-08T00:00:00.000Z"),
+    timezone: null,
+    sourceData: null,
+    aiOriginal: null,
+  });
+  assert.equal(task.dueAt?.toISOString(), "2026-08-08T00:00:00.000Z");
+});
+
 test("TaskService.create: повторный clientMutationId возвращает ту же задачу", async () => {
   const service = new TaskService(new InMemoryTaskRepository());
   const base = {

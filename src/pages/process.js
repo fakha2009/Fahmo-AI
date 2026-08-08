@@ -71,49 +71,117 @@ export function normalizeRemoteWarning(item, index) {
   };
 }
 
-function renderProcess(analysis, options = {}) {
+function processView(analysis) {
   const activeIndex = stageOrder.indexOf(analysis.progressStep ?? 'read');
   const progress = Math.max(0, Math.min(100, analysis.progress ?? 0));
   const failed = analysis.status === 'failed';
   const completed = analysis.status === 'completed' || analysis.status === 'needs_clarification';
   const cancelled = analysis.status === 'cancelled';
   const cancelling = cancellingAnalysisId === analysis.id;
+  return {
+    activeIndex,
+    progress,
+    failed,
+    completed,
+    cancelled,
+    cancelling,
+    title: failed ? t('errorTitle') : cancelled ? t('statusCancelled') : completed ? t('statusCompleted') : t('processTitle'),
+    subtitle: failed ? (analysis.error?.message || t('genericError')) : cancelled ? t('statusCancelled') : completed ? t('saved') : t('processSubtitle'),
+    actionState: `${analysis.status}:${cancelling}`,
+  };
+}
+
+function processStepState(view, index) {
+  if (view.completed || index < view.activeIndex) return 'complete';
+  if (index === view.activeIndex && !view.failed && !view.cancelled) return 'active';
+  return '';
+}
+
+function processActions(analysis, view) {
+  return `
+    ${view.completed ? `<button class="button button--primary" type="button" data-open-result>${icon('arrowRight')} ${escapeHtml(t('openResult'))}</button>` : ''}
+    ${view.failed ? `<button class="button button--primary" type="button" data-retry>${icon('refresh')} ${escapeHtml(t('retry'))}</button>` : ''}
+    ${!view.completed && !view.failed && !view.cancelled ? `<button class="button button--ghost" type="button" data-cancel-analysis ${view.cancelling ? 'disabled aria-busy="true"' : ''}>${escapeHtml(t(view.cancelling ? 'cancelling' : 'cancel'))}</button>` : ''}
+    <a class="button button--secondary" href="/" data-router>${escapeHtml(t('backHome'))}</a>`;
+}
+
+function bindProcessActions(analysis, root = document) {
+  root.querySelector('[data-open-result]')?.addEventListener('click', () => navigate(`/result/${analysis.id}`));
+  root.querySelector('[data-retry]')?.addEventListener('click', () => retryAnalysis(analysis));
+  root.querySelector('[data-cancel-analysis]')?.addEventListener('click', () => cancelAnalysis(analysis));
+}
+
+function updateProcessView(analysis) {
+  const root = document.querySelector('[data-process-root]');
+  if (!root || root.dataset.analysisId !== analysis.id) return false;
+  const view = processView(analysis);
+  root.querySelector('.process-mascot-wrap')?.setAttribute('data-active', String(!view.completed && !view.failed && !view.cancelled));
+  const title = root.querySelector('[data-process-title]');
+  const subtitle = root.querySelector('[data-process-subtitle]');
+  const track = root.querySelector('[data-process-track]');
+  const bar = root.querySelector('[data-process-bar]');
+  const value = root.querySelector('[data-process-value]');
+  if (title) title.textContent = view.title;
+  if (subtitle) subtitle.textContent = view.subtitle;
+  track?.setAttribute('aria-label', `${view.progress}%`);
+  bar?.style.setProperty('--progress', `${view.progress}%`);
+  if (value) value.textContent = `${view.progress}%`;
+  root.querySelectorAll('[data-process-step]').forEach((step, index) => {
+    const state = processStepState(view, index);
+    if (step.dataset.state === state) return;
+    step.dataset.state = state;
+    const marker = step.querySelector('.progress-step__state');
+    if (marker) marker.innerHTML = state === 'complete' ? icon('check', { size: 16 }) : String(index + 1);
+  });
+  const request = root.querySelector('[data-process-request]');
+  if (request) {
+    request.hidden = !analysis.error?.requestId;
+    request.textContent = analysis.error?.requestId ? `Request ID: ${analysis.error.requestId}` : '';
+  }
+  const actions = root.querySelector('[data-process-actions]');
+  if (actions && actions.dataset.state !== view.actionState) {
+    actions.dataset.state = view.actionState;
+    actions.innerHTML = processActions(analysis, view);
+    bindProcessActions(analysis, actions);
+  }
+  return true;
+}
+
+function renderProcess(analysis, options = {}) {
+  if (updateProcessView(analysis)) {
+    options.onRendered?.();
+    return;
+  }
+  const view = processView(analysis);
   renderShell({
     title: t('processTitle'),
     currentPath: `/analyze/${analysis.id}`,
     content: `
-      <div class="process-shell">
+      <div class="process-shell" data-process-root data-analysis-id="${escapeHtml(analysis.id)}">
         <section class="card process-card">
-          <div class="process-mascot-wrap" data-active="${!completed && !failed && !cancelled}" aria-hidden="true">
+          <div class="process-mascot-wrap" data-active="${!view.completed && !view.failed && !view.cancelled}" aria-hidden="true">
             <picture>
               <source srcset="/public/assets/mascot-analyzing.webp" type="image/webp">
               <img class="process-mascot process-mascot--gif" src="/public/assets/mascot-analyzing.gif" alt="">
             </picture>
             <img class="process-mascot process-mascot--still" src="/public/assets/icon-192-v2.png" alt="">
           </div>
-          <h1>${escapeHtml(failed ? t('errorTitle') : cancelled ? t('statusCancelled') : completed ? t('statusCompleted') : t('processTitle'))}</h1>
-          <p>${escapeHtml(failed ? (analysis.error?.message || t('genericError')) : cancelled ? t('statusCancelled') : completed ? t('saved') : t('processSubtitle'))}</p>
-          <div class="progress-track" aria-label="${progress}%"><div class="progress-bar" style="--progress:${progress}%"></div></div>
-          <div class="progress-value">${progress}%</div>
+          <h1 data-process-title>${escapeHtml(view.title)}</h1>
+          <p data-process-subtitle>${escapeHtml(view.subtitle)}</p>
+          <div class="progress-track" data-process-track aria-label="${view.progress}%"><div class="progress-bar" data-process-bar style="--progress:${view.progress}%"></div></div>
+          <div class="progress-value" data-process-value>${view.progress}%</div>
           <div class="progress-steps">
             ${stageOrder.map((stage, index) => {
-              const state = completed || index < activeIndex ? 'complete' : index === activeIndex && !failed && !cancelled ? 'active' : '';
-              return `<div class="progress-step" data-state="${state}"><span class="progress-step__state">${state === 'complete' ? icon('check', { size: 16 }) : index + 1}</span><span>${escapeHtml(t(stageLabels[stage]))}</span></div>`;
+              const state = processStepState(view, index);
+              return `<div class="progress-step" data-process-step data-state="${state}"><span class="progress-step__state">${state === 'complete' ? icon('check', { size: 16 }) : index + 1}</span><span>${escapeHtml(t(stageLabels[stage]))}</span></div>`;
             }).join('')}
           </div>
-          ${analysis.error?.requestId ? `<p class="field-hint">Request ID: ${escapeHtml(analysis.error.requestId)}</p>` : ''}
-          <div class="process-actions">
-            ${completed ? `<button class="button button--primary" type="button" data-open-result>${icon('arrowRight')} ${escapeHtml(t('openResult'))}</button>` : ''}
-            ${failed ? `<button class="button button--primary" type="button" data-retry>${icon('refresh')} ${escapeHtml(t('retry'))}</button>` : ''}
-            ${!completed && !failed && !cancelled ? `<button class="button button--ghost" type="button" data-cancel-analysis ${cancelling ? 'disabled aria-busy="true"' : ''}>${escapeHtml(t(cancelling ? 'cancelling' : 'cancel'))}</button>` : ''}
-            <a class="button button--secondary" href="/" data-router>${escapeHtml(t('backHome'))}</a>
-          </div>
+          <p class="field-hint" data-process-request ${analysis.error?.requestId ? '' : 'hidden'}>${analysis.error?.requestId ? `Request ID: ${escapeHtml(analysis.error.requestId)}` : ''}</p>
+          <div class="process-actions" data-process-actions data-state="${view.actionState}">${processActions(analysis, view)}</div>
         </section>
       </div>`
   });
-  document.querySelector('[data-open-result]')?.addEventListener('click', () => navigate(`/result/${analysis.id}`));
-  document.querySelector('[data-retry]')?.addEventListener('click', () => retryAnalysis(analysis));
-  document.querySelector('[data-cancel-analysis]')?.addEventListener('click', () => cancelAnalysis(analysis));
+  bindProcessActions(analysis, document.querySelector('[data-process-root]') ?? document);
   options.onRendered?.();
 }
 

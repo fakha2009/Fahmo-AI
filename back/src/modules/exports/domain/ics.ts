@@ -7,6 +7,8 @@ export interface IcsEventInput {
   /** true → использовать TZID (часовой пояс контекста), false → UTC (Z). */
   timezone: string | null;
   status: "confirmed" | "cancelled";
+  allDay?: boolean;
+  alarmMinutesBefore?: number[];
   /** Произвольные необязательные поля VTIMEZONE (offset из timezone). */
 }
 
@@ -47,6 +49,7 @@ export class IcsGenerator {
           ? []
           : [`DESCRIPTION:${escapeLines(event.description)}`]),
         `STATUS:${event.status === "cancelled" ? "CANCELLED" : "CONFIRMED"}`,
+        ...this.alarmLines(event),
         "END:VEVENT"
       );
     }
@@ -56,10 +59,35 @@ export class IcsGenerator {
   }
 
   private startLines(event: IcsEventInput): string[] {
-    if (event.timezone !== null && event.timezone.trim() !== "") {
-      return [`DTSTART;TZID=${escapeParam(event.timezone)}:${toIcsDateTime(new Date(event.start))}`];
+    const start = new Date(event.start);
+    if (Number.isNaN(start.getTime())) {
+      throw new Error("invalid calendar event start");
     }
-    return [`DTSTART:${toIcsUtcDateTime(new Date(event.start))}`];
+    if (event.allDay === true) {
+      const end = new Date(start.getTime());
+      end.setUTCDate(end.getUTCDate() + 1);
+      return [
+        `DTSTART;VALUE=DATE:${toIcsDate(start)}`,
+        `DTEND;VALUE=DATE:${toIcsDate(end)}`,
+      ];
+    }
+    if (event.timezone !== null && event.timezone.trim() !== "") {
+      return [`DTSTART;TZID=${escapeParam(event.timezone)}:${toIcsZonedDateTime(start, event.timezone)}`];
+    }
+    return [`DTSTART:${toIcsUtcDateTime(start)}`];
+  }
+
+  private alarmLines(event: IcsEventInput): string[] {
+    const values = [...new Set(event.alarmMinutesBefore ?? [])]
+      .filter((value) => Number.isInteger(value) && value > 0 && value <= 525_600)
+      .sort((left, right) => left - right);
+    return values.flatMap((minutes) => [
+      "BEGIN:VALARM",
+      `TRIGGER:-PT${minutes}M`,
+      "ACTION:DISPLAY",
+      `DESCRIPTION:${escapeText(event.title)}`,
+      "END:VALARM",
+    ]);
   }
 }
 
@@ -86,6 +114,26 @@ export function toIcsDateTime(date: Date): string {
   return `${date.getUTCFullYear()}${pad(date.getUTCMonth() + 1)}${pad(date.getUTCDate())}T${pad(
     date.getUTCHours()
   )}${pad(date.getUTCMinutes())}${pad(date.getUTCSeconds())}Z`;
+}
+
+function toIcsDate(date: Date): string {
+  return `${date.getUTCFullYear()}${pad(date.getUTCMonth() + 1)}${pad(date.getUTCDate())}`;
+}
+
+function toIcsZonedDateTime(date: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const part = (type: Intl.DateTimeFormatPartTypes): string =>
+    parts.find((candidate) => candidate.type === type)?.value ?? "";
+  return `${part("year")}${part("month")}${part("day")}T${part("hour")}${part("minute")}${part("second")}`;
 }
 
 function toIcsUtcDateTime(date: Date): string {

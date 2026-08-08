@@ -478,7 +478,7 @@ html[data-theme="dark"] .theme-image--dark { display: block; }
 .progress-bar { height: 100%; width: var(--progress, 0%); border-radius: inherit; background: linear-gradient(90deg, var(--primary), var(--accent-cyan)); transition: width 320ms ease; }
 .progress-value { color: var(--text-secondary); font-size: 13px; text-align: right; }
 .progress-steps { margin-top: 24px; display: grid; gap: 9px; text-align: left; }
-.progress-step { min-height: 54px; padding: 12px 14px; border-radius: 13px; color: var(--text-secondary); background: var(--surface-secondary); display: flex; align-items: center; gap: 12px; }
+.progress-step { min-height: 54px; padding: 12px 14px; border-radius: 13px; color: var(--text-secondary); background: var(--surface-secondary); display: flex; align-items: center; gap: 12px; transition: color 180ms var(--ease-out), background 220ms var(--ease-out); }
 .progress-step__state { width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--border-strong); display: grid; place-items: center; flex: 0 0 auto; }
 .progress-step[data-state="active"] { color: var(--primary); background: var(--primary-container); }
 .progress-step[data-state="active"] .progress-step__state { border-color: var(--primary); animation: pulse-ring 1.4s ease-in-out infinite; }

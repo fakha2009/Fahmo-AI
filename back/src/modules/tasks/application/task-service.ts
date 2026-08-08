@@ -34,11 +34,13 @@ export const DEFAULT_TASK_OPTIONS: TaskServiceOptions = {
 export class TaskService {
   constructor(
     private readonly repository: TaskRepository,
-    private readonly options: TaskServiceOptions = DEFAULT_TASK_OPTIONS
+    private readonly options: TaskServiceOptions = DEFAULT_TASK_OPTIONS,
+    private readonly now: () => Date = () => new Date()
   ) {}
 
   async create(owner: TaskOwner, input: TaskCreateCommand): Promise<TaskRecord> {
     this.assertOwner(owner);
+    this.assertDeadlineIsNotPast(input.dueAt, input.timezone);
     const count = await this.repository.countByOwner(owner.sessionId, owner.userId);
     if (count >= this.options.maxTasksPerOwner) {
       throw new AppError({
@@ -81,6 +83,12 @@ export class TaskService {
     }
     if (Object.keys(patch).length === 0) {
       throw new AppError({ code: "VALIDATION_ERROR", message: "PATCH не содержит полей" });
+    }
+    if (patch.dueAt !== undefined) {
+      this.assertDeadlineIsNotPast(
+        patch.dueAt,
+        patch.timezone === undefined ? current.timezone : patch.timezone
+      );
     }
     const result = await this.repository.update(id, expectedRevision, patch);
     switch (result.kind) {
@@ -132,6 +140,19 @@ export class TaskService {
       (owner.sessionId !== null && record.sessionId === owner.sessionId) ||
       (owner.userId !== null && record.userId === owner.userId)
     );
+  }
+
+  private assertDeadlineIsNotPast(dueAt: Date | null, timezone: string | null): void {
+    if (dueAt === null) return;
+    const allDay = timezone === null
+      && dueAt.getUTCHours() === 0
+      && dueAt.getUTCMinutes() === 0
+      && dueAt.getUTCSeconds() === 0
+      && dueAt.getUTCMilliseconds() === 0;
+    const expiresAt = allDay ? dueAt.getTime() + 24 * 60 * 60 * 1000 : dueAt.getTime();
+    if (!Number.isFinite(expiresAt) || expiresAt <= this.now().getTime()) {
+      throw new AppError({ code: "VALIDATION_ERROR", message: "Нельзя установить прошедшую дату или время" });
+    }
   }
 
   private assertOwner(owner: TaskOwner): void {

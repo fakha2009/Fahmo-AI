@@ -3,8 +3,8 @@ import { getLanguage, t } from '../core/i18n.js';
 import { deleteShare, getAnalysis, saveAnalysis, saveDraft, saveShare } from '../core/repository.js';
 import { navigate } from '../core/router.js';
 import { getSettings } from '../core/settings.js';
-import { copyText, downloadBlob, escapeAttribute, escapeHtml, formatDate, uid, wait } from '../core/utils.js';
-import { createResultPdf, downloadTaskCalendar } from '../domain/exporters.js';
+import { copyText, downloadBlob, escapeAttribute, escapeHtml, formatDate, todayIso, uid, wait } from '../core/utils.js';
+import { calendarTaskStatus, createResultPdf, downloadTaskCalendar } from '../domain/exporters.js';
 import { normalizeRemoteResult, normalizeSourceReference } from './process.js';
 import { confirmDialog, openDialog } from '../ui/dialogs.js';
 import { icon } from '../ui/icons.js';
@@ -238,7 +238,7 @@ function editTask(taskId) {
         <div class="field"><label for="task-description">${escapeHtml(t('description'))}</label><textarea id="task-description" class="textarea" name="description">${escapeHtml(task.description || '')}</textarea></div>
         <div class="field-row">
           <div class="field"><label for="task-priority">${escapeHtml(t('priority'))}</label><select id="task-priority" class="select" name="priority"><option value="high" ${task.priority === 'high' ? 'selected' : ''}>${escapeHtml(t('high'))}</option><option value="medium" ${task.priority === 'medium' ? 'selected' : ''}>${escapeHtml(t('medium'))}</option><option value="low" ${task.priority === 'low' ? 'selected' : ''}>${escapeHtml(t('low'))}</option></select></div>
-          <div class="field"><label for="task-date">${escapeHtml(t('date'))}</label><input id="task-date" class="input" name="dueDate" value="${escapeAttribute(task.dueDate || '')}" placeholder="2026-08-10"></div>
+          <div class="field"><label for="task-date">${escapeHtml(t('date'))}</label><input id="task-date" class="input" type="date" name="dueDate" min="${todayIso()}" value="${escapeAttribute(task.dueDate || '')}"></div>
         </div>
         <div class="field-row">
           <div class="field"><label for="task-time">${escapeHtml(t('time'))}</label><input id="task-time" class="input" type="time" name="dueTime" value="${escapeAttribute(task.dueTime || '')}"></div>
@@ -264,6 +264,14 @@ function editTask(taskId) {
           reminderMinutes: values.reminderMinutes ? Number(values.reminderMinutes) : null,
           userEdited: true
         };
+        if (patch.dueDate && calendarTaskStatus(patch) === 'past') {
+          showToast({ title: t('errorTitle'), message: t('pastDateNotAllowed'), type: 'warning' });
+          return;
+        }
+        if (patch.reminderMinutes && (!patch.dueDate || !patch.dueTime)) {
+          showToast({ title: t('errorTitle'), message: t('reminderNeedsTime'), type: 'warning' });
+          return;
+        }
         const saveButton = dialog.querySelector('[data-save-task]');
         saveButton.disabled = true;
         try {
@@ -275,7 +283,7 @@ function editTask(taskId) {
               description: patch.description,
               priority: patch.priority,
               dueAt,
-              timezone: dueAt ? Intl.DateTimeFormat().resolvedOptions().timeZone : null,
+              timezone: dueAt && patch.dueTime ? Intl.DateTimeFormat().resolvedOptions().timeZone : null,
             });
             applyRemoteTask(task, response);
             task.location = patch.location;
@@ -453,15 +461,16 @@ async function downloadPdf() {
 }
 
 function calendarDialog() {
-  const tasks = analysis.result.tasks?.filter((task) => task.dueDate) ?? [];
+  const datedTasks = analysis.result.tasks?.filter((task) => task.dueDate) ?? [];
+  const tasks = datedTasks.filter((task) => calendarTaskStatus(task) === 'eligible');
   if (!tasks.length) {
-    showToast({ title: t('errorTitle'), message: `${t('date')} — ${t('noData')}`, type: 'warning' });
+    showToast({ title: t('errorTitle'), message: datedTasks.length ? t('calendarNoFutureDates') : t('calendarNoDates'), type: 'warning' });
     return;
   }
   openDialog({
     id: 'calendar-dialog',
     title: t('addCalendar'),
-    body: `<div class="action-sheet-list">${tasks.map((task) => `<button class="action-sheet-item" type="button" data-calendar-task="${escapeAttribute(task.id)}">${icon('calendar')}<span><strong>${escapeHtml(task.title)}</strong><span>${escapeHtml(task.dueDate)}</span></span></button>`).join('')}</div>`,
+    body: `<div class="action-sheet-list">${tasks.map((task) => `<button class="action-sheet-item" type="button" data-calendar-task="${escapeAttribute(task.id)}">${icon('calendar')}<span><strong>${escapeHtml(task.title)}</strong><span>${escapeHtml([task.dueDate, task.dueTime].filter(Boolean).join(' · '))}</span></span></button>`).join('')}</div>`,
     onOpen(dialog) {
       dialog.querySelectorAll('[data-calendar-task]').forEach((button) => button.addEventListener('click', async () => {
         const task = tasks.find((item) => item.id === button.dataset.calendarTask);
@@ -493,14 +502,19 @@ function applyRemoteTask(task, response) {
   task.description = response.description ?? '';
   task.priority = response.priority ?? task.priority;
   task.completed = response.completed ?? response.status === 'completed';
-  task.dueDate = response.dueDate ?? response.dueAt?.slice(0, 10) ?? null;
-  task.dueTime = response.dueTime ?? response.dueAt?.slice(11, 16) ?? null;
+  task.dueDate = Object.hasOwn(response, 'dueDate') ? response.dueDate : response.dueAt?.slice(0, 10) ?? null;
+  task.dueTime = Object.hasOwn(response, 'dueTime') ? response.dueTime : response.dueAt?.slice(11, 16) ?? null;
+  if (Object.hasOwn(response, 'timezone')) task.timezone = response.timezone;
   task.revision = Number.isInteger(response.revision) ? response.revision : task.revision;
 }
 
 function toDueAt(dueDate, dueTime) {
   if (!dueDate) return null;
-  const value = new Date(`${dueDate}T${dueTime || '00:00'}:00`);
+  if (!dueTime) {
+    const value = new Date(`${dueDate}T00:00:00.000Z`);
+    return Number.isNaN(value.getTime()) ? null : value.toISOString();
+  }
+  const value = new Date(`${dueDate}T${dueTime}:00`);
   return Number.isNaN(value.getTime()) ? null : value.toISOString();
 }
 

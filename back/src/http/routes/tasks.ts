@@ -132,6 +132,12 @@ function validationError(error: z.ZodError): AppError {
 }
 
 export function taskToResponse(task: TaskRecord) {
+  const dueAt = task.dueAt?.toISOString() ?? null;
+  const allDay = task.dueAt !== null
+    && task.timezone === null
+    && task.dueAt.getUTCHours() === 0
+    && task.dueAt.getUTCMinutes() === 0
+    && task.dueAt.getUTCSeconds() === 0;
   return {
     id: task.id,
     analysisId: task.analysisId,
@@ -143,9 +149,9 @@ export function taskToResponse(task: TaskRecord) {
     priority: task.priority,
     status: task.status,
     completed: task.status === "completed",
-    dueAt: task.dueAt?.toISOString() ?? null,
-    dueDate: task.dueAt?.toISOString().slice(0, 10) ?? null,
-    dueTime: task.dueAt?.toISOString().slice(11, 16) ?? null,
+    dueAt,
+    dueDate: dueAt?.slice(0, 10) ?? null,
+    dueTime: allDay ? null : dueAt?.slice(11, 16) ?? null,
     timezone: task.timezone,
     revision: task.revision,
     completedAt: task.completedAt?.toISOString() ?? null,
