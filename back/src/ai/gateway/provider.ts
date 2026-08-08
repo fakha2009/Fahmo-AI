@@ -75,10 +75,14 @@ export interface ProviderCapabilities {
 export interface ProviderConfig {
   name: string;
   apiKey: string;
+  /** Credential pool for providers that support transparent per-key failover. */
+  apiKeys?: readonly string[];
+  keyCooldownMs?: number;
   baseUrl: string;
   model: string;
   enabled: boolean;
   priority: number;
+  operationPriorities?: Partial<Record<AiOperation, number>>;
   timeoutMs: number;
   maxRetries: number;
   retryBaseDelayMs: number;

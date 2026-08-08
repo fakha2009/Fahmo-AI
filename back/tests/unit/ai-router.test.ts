@@ -154,6 +154,18 @@ test("ProviderRouter: fallback order по priority при прочих равн�
   assert.deepEqual(route.map((p) => p.name), ["deepseek", "gemini"]);
 });
 
+test("ProviderRouter: учитывает отдельный приоритет для операции", () => {
+  const registry = new ProviderRegistry();
+  register(registry, "gemini", { priority: 0, operationPriorities: { analyze_text: 1 } });
+  register(registry, "deepseek", { priority: 10, operationPriorities: { analyze_text: 0 } });
+  const route = makeRouter(registry).route({
+    ...baseRequest,
+    operation: "analyze_text",
+    inputType: "text",
+  });
+  assert.deepEqual(route.map((provider) => provider.name), ["deepseek", "gemini"]);
+});
+
 test("ProviderRouter: preferLowLatency сортирует по средней задержке", () => {
   const registry = new ProviderRegistry();
   register(registry, "gemini", { priority: 1 });

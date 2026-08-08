@@ -31,7 +31,23 @@ test("Config: применяются значения по умолчанию", 
   assert.deepEqual(config.AI_CLARIFICATION_PROVIDER_ORDER, ["deepseek", "gemini"]);
   assert.equal(config.AI_FALLBACK_ENABLED, true);
   assert.equal(config.GEMINI_API_KEY, undefined);
+  assert.equal(config.GEMINI_API_KEYS, undefined);
+  assert.equal(config.GEMINI_KEY_COOLDOWN_SECONDS, 60);
   assert.equal(config.DEEPSEEK_MODEL, undefined);
+});
+
+test("Config: пул Gemini принимает до шести уникальных ключей", () => {
+  const config = parseEnv({
+    ...validEnv(),
+    GEMINI_API_KEYS: "key-1,key-2;key-2\nkey-3",
+    GEMINI_KEY_COOLDOWN_SECONDS: "120",
+  });
+  assert.deepEqual(config.GEMINI_API_KEYS, ["key-1", "key-2", "key-3"]);
+  assert.equal(config.GEMINI_KEY_COOLDOWN_SECONDS, 120);
+  assert.throws(() => parseEnv({
+    ...validEnv(),
+    GEMINI_API_KEYS: "1,2,3,4,5,6,7",
+  }), ZodError);
 });
 
 test("Config: CSV-порядок провайдеров и bool парсятся", () => {

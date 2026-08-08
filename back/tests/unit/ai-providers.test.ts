@@ -119,6 +119,41 @@ test("GeminiProvider: 429 → RATE_LIMITED (retryable)", async () => {
   );
 });
 
+test("GeminiProvider: 429 на одном ключе незаметно переключает запрос на следующий", async () => {
+  const { fetchFn, calls } = fakeFetch((_url, init) => {
+    const key = (init.headers as Record<string, string>)["x-goog-api-key"];
+    return key === "key-1"
+      ? jsonResponse({ error: { message: "quota" } }, 429)
+      : jsonResponse({ candidates: [{ content: { parts: [{ text: validContent }] } }] });
+  });
+  const provider = new GeminiProvider(baseConfig("gemini", {
+    apiKey: "key-1",
+    apiKeys: ["key-1", "key-2"],
+    keyCooldownMs: 60_000,
+  }), fetchFn);
+
+  const result = await provider.analyzeText({ analysisId: null, language: "ru", text: "x" });
+
+  assert.equal(result.content, validContent);
+  assert.deepEqual(calls.map((call) => (call.init.headers as Record<string, string>)["x-goog-api-key"]), ["key-1", "key-2"]);
+});
+
+test("GeminiProvider: распределяет последовательные задачи по пулу round-robin", async () => {
+  const { fetchFn, calls } = fakeFetch(() =>
+    jsonResponse({ candidates: [{ content: { parts: [{ text: validContent }] } }] })
+  );
+  const provider = new GeminiProvider(baseConfig("gemini", {
+    apiKey: "key-1",
+    apiKeys: ["key-1", "key-2", "key-3"],
+  }), fetchFn);
+
+  await provider.analyzeText({ analysisId: null, language: "ru", text: "one" });
+  await provider.analyzeText({ analysisId: null, language: "ru", text: "two" });
+  await provider.analyzeText({ analysisId: null, language: "ru", text: "three" });
+
+  assert.deepEqual(calls.map((call) => (call.init.headers as Record<string, string>)["x-goog-api-key"]), ["key-1", "key-2", "key-3"]);
+});
+
 test("GeminiProvider: 500 → AI_PROVIDER_UNAVAILABLE (retryable)", async () => {
   const { fetchFn } = fakeFetch(() => jsonResponse({}, 500));
   const provider = new GeminiProvider(baseConfig("gemini"), fetchFn);

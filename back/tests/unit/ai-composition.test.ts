@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   buildProviderConfigs,
   createAiStack,
+  resolveGeminiApiKeys,
 } from "../../src/ai/composition";
 import type { EnvConfig } from "../../src/config";
 
@@ -49,6 +50,18 @@ test("buildProviderConfigs: с ключом Gemini провайдер включ
   assert.equal(deepseek?.enabled, true);
   assert.equal(gemini?.priority, 0); // AI_VISION_PROVIDER_ORDER: ["gemini"] — первый
   assert.equal(deepseek?.priority, 0); // AI_TEXT_PROVIDER_ORDER: ["deepseek", "gemini"] — первый
+  assert.equal(gemini?.operationPriorities?.analyze_text, 1);
+  assert.equal(deepseek?.operationPriorities?.analyze_text, 0);
+});
+
+test("buildProviderConfigs: объединяет legacy-ключ и пул без дублей", () => {
+  const config = env({
+    GEMINI_API_KEY: "key-legacy",
+    GEMINI_API_KEYS: ["key-1", "key-legacy", "key-2"],
+  });
+  assert.deepEqual(resolveGeminiApiKeys(config), ["key-1", "key-legacy", "key-2"]);
+  const gemini = buildProviderConfigs(config).find((item) => item.name === "gemini");
+  assert.deepEqual(gemini?.apiKeys, ["key-1", "key-legacy", "key-2"]);
 });
 
 test("createAiStack: registry содержит провайдеров, gateway готов", () => {
@@ -59,4 +72,19 @@ test("createAiStack: registry содержит провайдеров, gateway �
   );
   assert.equal(stack.registry.list().find((p) => p.name === "gemini")?.getCapabilities().available, true);
   assert.equal(typeof stack.gateway.analyzeText, "function");
+});
+
+test("createAiStack: DeepSeek обслуживает текст первым, Gemini остаётся fallback", () => {
+  const stack = createAiStack(env({
+    GEMINI_API_KEY: "secret-gemini",
+    DEEPSEEK_API_KEY: "secret-deepseek",
+  }));
+  const route = stack.router.route({
+    operation: "analyze_text",
+    inputType: "text",
+    language: "ru",
+    pageCount: 1,
+    inputBytes: 100,
+  });
+  assert.deepEqual(route.map((provider) => provider.name), ["deepseek", "gemini"]);
 });

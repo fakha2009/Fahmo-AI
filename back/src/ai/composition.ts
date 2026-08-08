@@ -20,13 +20,22 @@ const GEMINI_INPUTS: AiInputType[] = ["text", "image", "pdf"];
  * из маршрутизации, но остаётся в реестре для диагностики).
  */
 export function buildProviderConfigs(config: EnvConfig): ProviderConfig[] {
+  const geminiKeys = resolveGeminiApiKeys(config);
   const gemini: ProviderConfig = {
     name: "gemini",
-    apiKey: config.GEMINI_API_KEY ?? "",
+    apiKey: geminiKeys[0] ?? "",
+    apiKeys: geminiKeys,
+    keyCooldownMs: (config.GEMINI_KEY_COOLDOWN_SECONDS ?? 60) * 1_000,
     baseUrl: GEMINI_BASE_URL,
     model: config.GEMINI_MODEL ?? "gemini-flash-latest",
-    enabled: (config.GEMINI_API_KEY ?? "").length > 0,
+    enabled: geminiKeys.length > 0,
     priority: indexOf(config.AI_VISION_PROVIDER_ORDER, "gemini"),
+    operationPriorities: {
+      analyze_document: indexOf(config.AI_VISION_PROVIDER_ORDER, "gemini"),
+      analyze_text: indexOf(config.AI_TEXT_PROVIDER_ORDER, "gemini"),
+      answer_clarification: indexOf(config.AI_CLARIFICATION_PROVIDER_ORDER, "gemini"),
+      simplify_result: indexOf(config.AI_CLARIFICATION_PROVIDER_ORDER, "gemini"),
+    },
     timeoutMs: 60_000,
     maxRetries: 2,
     retryBaseDelayMs: 1_000,
@@ -46,6 +55,11 @@ export function buildProviderConfigs(config: EnvConfig): ProviderConfig[] {
     model: config.DEEPSEEK_MODEL ?? "deepseek-chat",
     enabled: (config.DEEPSEEK_API_KEY ?? "").length > 0,
     priority: indexOf(config.AI_TEXT_PROVIDER_ORDER, "deepseek"),
+    operationPriorities: {
+      analyze_text: indexOf(config.AI_TEXT_PROVIDER_ORDER, "deepseek"),
+      answer_clarification: indexOf(config.AI_CLARIFICATION_PROVIDER_ORDER, "deepseek"),
+      simplify_result: indexOf(config.AI_CLARIFICATION_PROVIDER_ORDER, "deepseek"),
+    },
     timeoutMs: 60_000,
     maxRetries: 2,
     retryBaseDelayMs: 1_000,
@@ -59,6 +73,17 @@ export function buildProviderConfigs(config: EnvConfig): ProviderConfig[] {
   };
 
   return [gemini, deepseek];
+}
+
+export function resolveGeminiApiKeys(config: Pick<EnvConfig, "GEMINI_API_KEY" | "GEMINI_API_KEYS">): string[] {
+  const keys = [...new Set([
+    ...(config.GEMINI_API_KEYS ?? []),
+    ...(config.GEMINI_API_KEY === undefined ? [] : [config.GEMINI_API_KEY]),
+  ].map((key) => key.trim()).filter(Boolean))];
+  if (keys.length > 6) {
+    throw new Error("Gemini credential pool supports at most 6 unique API keys");
+  }
+  return keys;
 }
 
 function indexOf(order: readonly string[], name: string): number {

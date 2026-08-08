@@ -59,7 +59,9 @@ export class ProviderRouter {
     const costScore = request.preferLowCost
       ? ((config?.costPerMillionInput ?? 0) + (config?.costPerMillionOutput ?? 0)) / 1_000_000
       : 0;
-    const priorityScore = config?.priority ?? Number.MAX_SAFE_INTEGER;
+    const priorityScore = config?.operationPriorities?.[request.operation]
+      ?? config?.priority
+      ?? Number.MAX_SAFE_INTEGER;
     return latencyScore + costScore + priorityScore;
   }
 }

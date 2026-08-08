@@ -20,6 +20,11 @@ const ProviderOrderSchema = z
 
 const IntPositiveSchema = z.coerce.number().int().positive();
 
+const GeminiApiKeysSchema = z
+  .string()
+  .transform((value) => [...new Set(value.split(/[;,\n]/u).map((part) => part.trim()).filter(Boolean))])
+  .pipe(z.array(z.string().min(1)).min(1).max(6));
+
 const BoolSchema = z
   .enum(["true", "false"])
   .default("true")
@@ -56,7 +61,9 @@ export const EnvSchema = z
 
     // AI-провайдеры (пустые значения = провайдер отключён)
     GEMINI_API_KEY: z.string().min(1).optional(),
+    GEMINI_API_KEYS: GeminiApiKeysSchema.optional(),
     GEMINI_MODEL: z.string().min(1).optional(),
+    GEMINI_KEY_COOLDOWN_SECONDS: z.coerce.number().int().min(5).max(86_400).default(60),
     DEEPSEEK_API_KEY: z.string().min(1).optional(),
     DEEPSEEK_MODEL: z.string().min(1).optional(),
 
