@@ -124,6 +124,64 @@ test("AiResponseNormalizer: nullable source fields default to null when provider
   assert.equal(result.warnings[0]?.sourceRefs[0]?.boundingBox, null);
 });
 
+test("AiResponseNormalizer: accepts an RFC 3339 date-time with a numeric offset", () => {
+  const normalizer = new AiResponseNormalizer();
+  const answer = JSON.stringify({
+    ...JSON.parse(documentAnswer),
+    dates: [{
+      rawText: "15 августа в 18:00",
+      isoDate: "2026-08-15",
+      isoDateTime: "2026-08-15T18:00:00+05:00",
+      timezone: "Asia/Dushanbe",
+      kind: "event_start",
+      isApproximate: false,
+      confidence: "high",
+      sourceRefs: [{ clientPageId: "page-1", inputIndex: 0, pageNumber: 1, excerpt: "15 августа в 18:00" }],
+    }],
+  });
+  const result = normalizer.normalizeDocument(raw(answer), "ru");
+  assert.equal(result.dates[0]?.isoDateTime, "2026-08-15T18:00:00+05:00");
+});
+
+test("AiResponseNormalizer: degrades a malformed optional date without losing the analysis", () => {
+  const normalizer = new AiResponseNormalizer();
+  const malformedDate = {
+    rawText: "после обеда",
+    isoDate: "",
+    isoDateTime: "после обеда",
+    timezone: "",
+    kind: "deadline",
+    isApproximate: false,
+    confidence: "high",
+    sourceRefs: [{ clientPageId: "page-1", inputIndex: 0, pageNumber: 1, excerpt: "после обеда" }],
+  };
+  const answer = JSON.stringify({
+    ...JSON.parse(documentAnswer),
+    dates: [malformedDate],
+    tasks: [{
+      id: "task-1",
+      title: "Уточнить срок",
+      description: null,
+      simpleTitle: "Уточнить срок",
+      simpleDescription: null,
+      assigneeText: null,
+      priority: "medium",
+      status: "pending",
+      deadline: malformedDate,
+      confidence: "medium",
+      sourceRefs: malformedDate.sourceRefs,
+      requiresClarification: true,
+    }],
+  });
+  const result = normalizer.normalizeDocument(raw(answer), "ru");
+  assert.equal(result.dates[0]?.isoDate, null);
+  assert.equal(result.dates[0]?.isoDateTime, null);
+  assert.equal(result.dates[0]?.timezone, null);
+  assert.equal(result.dates[0]?.confidence, "medium");
+  assert.equal(result.dates[0]?.isApproximate, true);
+  assert.equal(result.tasks[0]?.deadline?.isoDateTime, null);
+});
+
 test("AiResponseNormalizer: отсутствие обязательного поля → AI_INVALID_RESPONSE", () => {
   const normalizer = new AiResponseNormalizer();
   const answer = JSON.stringify({

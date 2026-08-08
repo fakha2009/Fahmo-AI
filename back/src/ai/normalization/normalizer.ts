@@ -3,7 +3,12 @@ import {
   AnalysisResultSchema,
   type AnalysisResult,
 } from "../../validation/ai/analysis-result";
-import type { OutputLanguage } from "../../validation/common";
+import {
+  IsoDateSchema,
+  IsoDateTimeSchema,
+  TimezoneSchema,
+  type OutputLanguage,
+} from "../../validation/common";
 import {
   ProviderClarificationAnswerSchema,
   ProviderDocumentAnswerSchema,
@@ -32,7 +37,9 @@ export class AiResponseNormalizer {
   }
 
   normalizeDocument(raw: ProviderRawResult, language: OutputLanguage): AnalysisResult {
-    const parsed = withNullableSourceDefaults(this.parseContent(raw.content));
+    const parsed = withRecoverableDateDefaults(
+      withNullableSourceDefaults(this.parseContent(raw.content))
+    );
     const answer = ProviderDocumentAnswerSchema.safeParse(parsed);
     if (!answer.success) {
       throw this.schemaError(answer.error);
@@ -81,7 +88,9 @@ export class AiResponseNormalizer {
     previous: AnalysisResult,
     language: OutputLanguage
   ): AnalysisResult {
-    const parsed = withNullableSourceDefaults(this.parseContent(raw.content));
+    const parsed = withRecoverableDateDefaults(
+      withNullableSourceDefaults(this.parseContent(raw.content))
+    );
     const answer = ProviderClarificationAnswerSchema.safeParse(parsed);
     if (!answer.success) {
       throw this.schemaError(answer.error);
@@ -130,6 +139,73 @@ function withNullableSourceDefaults(value: unknown): unknown {
     }
   }
   return value;
+}
+
+/**
+ * A malformed optional date must not discard an otherwise useful analysis.
+ * Preserve valid RFC 3339 offsets, repair harmless formatting differences and
+ * degrade uncertain values to a date-only/low-confidence extraction.
+ */
+function withRecoverableDateDefaults(value: unknown): unknown {
+  if (!isRecord(value)) {
+    return value;
+  }
+  const dates = value.dates;
+  if (Array.isArray(dates)) {
+    for (const date of dates) {
+      if (isRecord(date)) normalizeDate(date);
+    }
+  }
+  const tasks = value.tasks;
+  if (Array.isArray(tasks)) {
+    for (const task of tasks) {
+      if (isRecord(task) && isRecord(task.deadline)) normalizeDate(task.deadline);
+    }
+  }
+  return value;
+}
+
+function normalizeDate(date: Record<string, unknown>): void {
+  const originalDateTime = nullableTrimmedString(date.isoDateTime);
+  const normalizedDateTime = normalizeIsoDateTime(originalDateTime);
+  const normalizedDate = normalizeIsoDate(date.isoDate)
+    ?? normalizeIsoDate(originalDateTime?.slice(0, 10));
+
+  date.isoDate = normalizedDate;
+  date.isoDateTime = normalizedDateTime;
+  date.timezone = normalizeTimezone(date.timezone);
+  if (normalizedDate === null && normalizedDateTime === null) {
+    date.isApproximate = true;
+    if (date.confidence === "high") date.confidence = "medium";
+  }
+}
+
+function normalizeIsoDate(value: unknown): string | null {
+  const candidate = nullableTrimmedString(value);
+  if (candidate === null) return null;
+  return IsoDateSchema.safeParse(candidate).success ? candidate : null;
+}
+
+function normalizeIsoDateTime(value: string | null): string | null {
+  if (value === null) return null;
+  let candidate = value.replace(
+    /^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})/u,
+    "$1T$2"
+  );
+  candidate = candidate.replace(/([+-]\d{2})(\d{2})$/u, "$1:$2");
+  return IsoDateTimeSchema.safeParse(candidate).success ? candidate : null;
+}
+
+function normalizeTimezone(value: unknown): string | null {
+  const candidate = nullableTrimmedString(value);
+  if (candidate === null) return null;
+  return TimezoneSchema.safeParse(candidate).success ? candidate : null;
+}
+
+function nullableTrimmedString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const candidate = value.trim();
+  return candidate === "" ? null : candidate;
 }
 
 function normalizeSourceRefs(owner: Record<string, unknown>): void {

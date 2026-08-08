@@ -3,7 +3,7 @@ import { initRouter, registerRoute, renderRoute } from './core/router.js';
 import { t } from './core/i18n.js';
 import { homePage } from './pages/home.js';
 import { analyzePage } from './pages/analyze.js';
-import { processPage } from './pages/process.js';
+import { processPage } from './pages/process.js?v=1.1.4';
 import { resultPage } from './pages/result.js';
 import { historyPage } from './pages/history.js';
 import { settingsPage } from './pages/settings.js';

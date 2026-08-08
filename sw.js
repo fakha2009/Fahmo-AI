@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'fahmo-ai-v1.6.3';
+const CACHE_VERSION = 'fahmo-ai-v1.6.4';
 const APP_SHELL = [
   '/',
   '/index.html',
@@ -16,7 +16,7 @@ const APP_SHELL = [
   '/public/assets/icon-192-v2.png',
   '/public/assets/icon-512-v2.png',
   '/public/assets/icon-maskable-512-v2.png',
-  '/src/app.js',
+  '/src/app.js?v=1.1.4',
   '/src/core/api.js',
   '/src/core/db.js',
   '/src/core/i18n.js',
@@ -33,7 +33,7 @@ const APP_SHELL = [
   '/src/pages/history.js',
   '/src/pages/home.js',
   '/src/pages/misc.js',
-  '/src/pages/process.js',
+  '/src/pages/process.js?v=1.1.4',
   '/src/pages/result.js',
   '/src/pages/settings.js',
   '/src/pages/tasks.js',
@@ -60,7 +60,11 @@ function unavailableResponse(request) {
 }
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE_VERSION).then((cache) => cache.addAll(APP_SHELL)));
+  event.waitUntil(
+    caches.open(CACHE_VERSION)
+      .then((cache) => cache.addAll(APP_SHELL))
+      .then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener('activate', (event) => {
@@ -104,6 +108,20 @@ self.addEventListener('fetch', (event) => {
 
   // Runtime API routing must refresh before cached application modules use it.
   if (url.pathname === '/config.js') {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (response.ok) event.waitUntil(cacheResponse(request, response));
+          return response;
+        })
+        .catch(async () => (await caches.match(request)) ?? unavailableResponse(request))
+    );
+    return;
+  }
+
+  // Application modules must never execute one release behind. Prefer the
+  // network, while retaining the cached copy for genuine offline use.
+  if (url.pathname.startsWith('/src/')) {
     event.respondWith(
       fetch(request)
         .then((response) => {

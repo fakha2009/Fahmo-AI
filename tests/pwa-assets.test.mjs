@@ -33,3 +33,19 @@ test('PWA installation uses the browser prompt without suppressing its banner', 
   const appSource = await readFile(new URL('../src/app.js', import.meta.url), 'utf8');
   assert.doesNotMatch(appSource, /beforeinstallprompt[\s\S]{0,160}preventDefault/u);
 });
+
+test('the entry module is release-versioned to bypass an older service-worker cache', async () => {
+  const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  const index = await readFile(new URL('../index.html', import.meta.url), 'utf8');
+  const serviceWorker = await readFile(new URL('../sw.js', import.meta.url), 'utf8');
+  const entry = `/src/app.js?v=${packageJson.version}`;
+  assert.ok(index.includes(`src="${entry}"`));
+  assert.ok(serviceWorker.includes(`'${entry}'`));
+  assert.match(serviceWorker, /url\.pathname\.startsWith\('\/src\/'\)/u);
+});
+
+test('retrying a failed remote analysis creates a fresh backend job', async () => {
+  const processSource = await readFile(new URL('../src/pages/process.js', import.meta.url), 'utf8');
+  assert.match(processSource, /analysis\.remoteId = null/u);
+  assert.match(processSource, /analysis\.idempotencyKey = uid\('idem'\)/u);
+});

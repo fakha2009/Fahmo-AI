@@ -3,7 +3,7 @@ import { t } from '../core/i18n.js';
 import { getAnalysis, saveAnalysis } from '../core/repository.js';
 import { navigate } from '../core/router.js';
 import { getSettings } from '../core/settings.js';
-import { escapeHtml, wait } from '../core/utils.js';
+import { escapeHtml, uid, wait } from '../core/utils.js';
 import { analyzeTextDocument } from '../domain/analyzer.js';
 import { collectDocumentText } from '../domain/document-reader.js';
 import { icon } from '../ui/icons.js';
@@ -368,11 +368,18 @@ async function cancelAnalysis(analysis) {
 }
 
 async function retryAnalysis(analysis) {
+  if (analysis.settings?.provider === 'remote') {
+    // A failed remote analysis is terminal. A retry needs a fresh server job
+    // and idempotency key while reusing the locally persisted source blobs.
+    analysis.remoteId = null;
+    analysis.idempotencyKey = uid('idem');
+  }
   analysis.status = 'queued';
   analysis.progress = 0;
   analysis.progressStep = 'read';
   analysis.error = null;
-  if (analysis.settings?.provider === 'local') analysis.result = null;
+  analysis.result = null;
+  analysis.completedAt = null;
   await saveAnalysis(analysis);
   renderProcess(analysis);
   runAnalysis(analysis);

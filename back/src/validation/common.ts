@@ -5,7 +5,9 @@ export const IdSchema = z.string().min(20).max(40).regex(/^[a-z0-9]+$/, "cuid-п
 export const AnalysisIdSchema = z.union([z.uuid(), IdSchema]);
 export const OpaqueTokenSchema = z.string().min(16).max(128).regex(/^[A-Za-z0-9._-]+$/);
 
-export const IsoDateTimeSchema = z.iso.datetime();
+// RFC 3339 permits both `Z` and an explicit numeric offset. AI providers often
+// return document-local timestamps such as `2026-08-15T18:00:00+05:00`.
+export const IsoDateTimeSchema = z.iso.datetime({ offset: true });
 export const IsoDateSchema = z.iso.date();
 export const TimezoneSchema = z
   .string()
