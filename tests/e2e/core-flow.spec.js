@@ -67,8 +67,29 @@ test('production remote analysis reaches a server result with a durable source',
   test.skip(process.env.PLAYWRIGHT_REMOTE_FLOW !== '1', 'Runs only against the deployed production stack');
   test.skip(testInfo.project.name !== 'desktop-chrome', 'Production AI flow runs once');
   test.setTimeout(180_000);
-  await page.goto('/analyze?mode=text');
-  await page.locator('#document-text').fill('Поручение: до 20 августа 2026 года подготовить отчёт о проекте и отправить его руководителю.');
+  await page.goto('/analyze?mode=files');
+  const pngBase64 = await page.evaluate(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1200;
+    canvas.height = 720;
+    const context = canvas.getContext('2d');
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.fillStyle = '#151525';
+    context.font = '700 52px Arial';
+    context.fillText('WORK ASSIGNMENT', 90, 130);
+    context.font = '38px Arial';
+    context.fillText('Prepare the project report.', 90, 250);
+    context.fillText('Deadline: August 20, 2026.', 90, 340);
+    context.fillText('Send it to the project manager.', 90, 430);
+    return canvas.toDataURL('image/png').split(',')[1];
+  });
+  await page.locator('[data-file-input]').setInputFiles({
+    name: 'work-assignment.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from(pngBase64, 'base64'),
+  });
+  await expect(page.getByText('work-assignment.png', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: /Создать понятный план/u }).click();
   await expect(page).toHaveURL(/\/result\//u, { timeout: 150_000 });
   await expect(page.getByText('Простое объяснение', { exact: true }).first()).toBeVisible();
@@ -84,6 +105,7 @@ test('production remote analysis reaches a server result with a durable source',
   await expect(sourcePage.locator('[data-source-task]').first()).toBeVisible({ timeout: 30_000 });
   await sourcePage.locator('[data-source-task]').first().click();
   await expect(sourcePage.getByRole('dialog', { name: /Страница 1/u })).toBeVisible();
-  await expect(sourcePage.locator('[data-source-mark]')).toBeVisible({ timeout: 30_000 });
+  await expect(sourcePage.locator('.source-preview__image img')).toBeVisible({ timeout: 30_000 });
+  await expect(sourcePage.locator('.source-highlight')).toBeVisible({ timeout: 30_000 });
   await sourceContext.close();
 });
