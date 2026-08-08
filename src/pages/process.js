@@ -111,6 +111,15 @@ function bindProcessActions(analysis, root = document) {
   root.querySelector('[data-cancel-analysis]')?.addEventListener('click', () => cancelAnalysis(analysis));
 }
 
+function bindProcessMascot(root = document) {
+  const wrapper = root.querySelector('.process-mascot-wrap');
+  const image = wrapper?.querySelector('.process-mascot--gif');
+  if (!wrapper || !image) return;
+  const reveal = () => { wrapper.dataset.animationLoaded = 'true'; };
+  if (image.complete && image.naturalWidth > 0) reveal();
+  else image.addEventListener('load', reveal, { once: true });
+}
+
 function updateProcessView(analysis) {
   const root = document.querySelector('[data-process-root]');
   if (!root || root.dataset.analysisId !== analysis.id) return false;
@@ -162,7 +171,7 @@ function renderProcess(analysis, options = {}) {
           <div class="process-mascot-wrap" data-active="${!view.completed && !view.failed && !view.cancelled}" aria-hidden="true">
             <picture>
               <source srcset="/public/assets/mascot-analyzing.webp" type="image/webp">
-              <img class="process-mascot process-mascot--gif" src="/public/assets/mascot-analyzing.gif" alt="">
+              <img class="process-mascot process-mascot--gif" src="/public/assets/mascot-analyzing.gif" alt="" decoding="async" fetchpriority="high">
             </picture>
             <img class="process-mascot process-mascot--still" src="/public/assets/icon-192-v2.png" alt="">
           </div>
@@ -181,6 +190,7 @@ function renderProcess(analysis, options = {}) {
         </section>
       </div>`
   });
+  bindProcessMascot(document.querySelector('[data-process-root]') ?? document);
   bindProcessActions(analysis, document.querySelector('[data-process-root]') ?? document);
   options.onRendered?.();
 }

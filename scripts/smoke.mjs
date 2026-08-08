@@ -55,6 +55,8 @@ try {
   await check('/public/assets/mascot-dark.webp', 'image/webp');
   await check('/public/assets/hero-documents-light.webp', 'image/webp');
   await check('/public/assets/hero-documents-dark.webp', 'image/webp');
+  await check('/public/assets/mascot-analyzing.webp', 'image/webp');
+  await check('/public/assets/mascot-analyzing.gif', 'image/gif');
   await check('/public/assets/favicon-16-v2.png', 'image/png');
   await check('/public/assets/favicon-32-v2.png', 'image/png');
   await check('/public/assets/apple-touch-icon-v2.png', 'image/png');

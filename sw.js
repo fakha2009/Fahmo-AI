@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'fahmo-ai-v1.6.2';
+const CACHE_VERSION = 'fahmo-ai-v1.6.3';
 const APP_SHELL = [
   '/',
   '/index.html',
@@ -9,6 +9,7 @@ const APP_SHELL = [
   '/public/assets/mascot-dark.webp',
   '/public/assets/hero-documents-light.webp',
   '/public/assets/hero-documents-dark.webp',
+  '/public/assets/mascot-analyzing.webp',
   '/public/assets/favicon-16-v2.png',
   '/public/assets/favicon-32-v2.png',
   '/public/assets/apple-touch-icon-v2.png',

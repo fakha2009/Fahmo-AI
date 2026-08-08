@@ -95,7 +95,7 @@ function render() {
           <section class="card card--padded">
             <div class="card__header"><div><h2 class="card__title">${escapeHtml(t('pwa'))}</h2><p class="card__description">${escapeHtml(t('installSubtitle'))}</p></div></div>
             <div class="settings-stack">
-              <div class="data-item"><div class="data-item__type">${escapeHtml(t('version'))}</div><div class="data-item__value">${escapeHtml(globalThis.__FAHMO_CONFIG__?.appVersion ?? '1.1.2')}</div></div>
+              <div class="data-item"><div class="data-item__type">${escapeHtml(t('version'))}</div><div class="data-item__value">${escapeHtml(globalThis.__FAHMO_CONFIG__?.appVersion ?? '1.1.3')}</div></div>
               <div class="data-item"><div class="data-item__type">${escapeHtml(t('cacheStatus'))}</div><div class="data-item__value">${escapeHtml('serviceWorker' in navigator ? t('ready') : '—')}</div></div>
               <button class="button button--primary button--wide" type="button" data-install>${icon('install')} ${escapeHtml(t('installApp'))}</button>
               <button class="button button--secondary button--wide" type="button" data-update>${icon('refresh')} ${escapeHtml(t('updateApp'))}</button>

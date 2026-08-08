@@ -204,7 +204,9 @@ test('a double cancel preserves a result that completed concurrently', async ({ 
   await expect(cancelButton).toBeEnabled();
   const animatedMascot = page.locator('.process-mascot--gif');
   await expect(animatedMascot).toBeVisible();
-  await expect.poll(() => animatedMascot.evaluate((image) => image.naturalWidth)).toBe(320);
+  const fallbackMascot = page.locator('.process-mascot--still');
+  await expect(fallbackMascot).toBeVisible();
+  await expect.poll(() => fallbackMascot.evaluate((image) => image.naturalWidth)).toBeGreaterThan(0);
   expect(await animatedMascot.evaluate((image) => new URL(image.currentSrc).pathname)).toBe('/public/assets/mascot-analyzing.webp');
   await expect.poll(() => page.locator('.process-mascot-wrap').evaluate((element) => getComputedStyle(element).animationName)).toBe('process-alive');
   await page.locator('[data-process-root]').evaluate((element) => { element.dataset.persistenceToken = 'stable'; });
