@@ -130,6 +130,7 @@ test.describe('remote cancellation race', () => {
 test.use({ serviceWorkers: 'block' });
 
 test('a double cancel preserves a result that completed concurrently', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
   let cancelRequests = 0;
   await page.route('**/config.js', (route) => route.fulfill({
     contentType: 'text/javascript',
@@ -195,7 +196,7 @@ test('a double cancel preserves a result that completed concurrently', async ({ 
   await expect(animatedMascot).toBeVisible();
   await expect.poll(() => animatedMascot.evaluate((image) => image.naturalWidth)).toBe(320);
   expect(await animatedMascot.evaluate((image) => new URL(image.currentSrc).pathname)).toBe('/public/assets/mascot-analyzing.webp');
-  expect(await page.locator('.process-mascot-wrap').evaluate((element) => getComputedStyle(element).animationName)).toBe('process-alive');
+  await expect.poll(() => page.locator('.process-mascot-wrap').evaluate((element) => getComputedStyle(element).animationName)).toBe('process-alive');
   await page.evaluate(() => {
     const button = document.querySelector('[data-cancel-analysis]');
     button.click();
