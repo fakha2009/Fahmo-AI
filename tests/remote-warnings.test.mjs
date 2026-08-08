@@ -12,7 +12,13 @@ globalThis.matchMedia = () => ({
   removeEventListener() {},
 });
 
-const { normalizeRemoteResult, normalizeRemoteWarning, normalizeSourceReference } = await import('../src/pages/process.js');
+const { normalizeRemoteResult, normalizeRemoteWarning, normalizeSourceReference, processView } = await import('../src/pages/process.js');
+
+test('completed process view always exposes an atomic 100 percent state', () => {
+  const view = processView({ status: 'completed', progress: 80, progressStep: 'tasks' });
+  assert.equal(view.completed, true);
+  assert.equal(view.progress, 100);
+});
 
 test('backend warning message keys are replaced with readable localized text', () => {
   const warning = normalizeRemoteWarning({

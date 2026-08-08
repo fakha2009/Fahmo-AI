@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'fahmo-ai-v1.6.4';
+const CACHE_VERSION = 'fahmo-ai-v1.6.5';
 const APP_SHELL = [
   '/',
   '/index.html',
@@ -16,7 +16,7 @@ const APP_SHELL = [
   '/public/assets/icon-192-v2.png',
   '/public/assets/icon-512-v2.png',
   '/public/assets/icon-maskable-512-v2.png',
-  '/src/app.js?v=1.1.4',
+  '/src/app.js?v=1.1.5',
   '/src/core/api.js',
   '/src/core/db.js',
   '/src/core/i18n.js',
@@ -33,7 +33,7 @@ const APP_SHELL = [
   '/src/pages/history.js',
   '/src/pages/home.js',
   '/src/pages/misc.js',
-  '/src/pages/process.js?v=1.1.4',
+  '/src/pages/process.js?v=1.1.5',
   '/src/pages/result.js',
   '/src/pages/settings.js',
   '/src/pages/tasks.js',

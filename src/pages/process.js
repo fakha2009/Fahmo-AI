@@ -71,12 +71,12 @@ export function normalizeRemoteWarning(item, index) {
   };
 }
 
-function processView(analysis) {
+export function processView(analysis) {
   const activeIndex = stageOrder.indexOf(analysis.progressStep ?? 'read');
-  const progress = Math.max(0, Math.min(100, analysis.progress ?? 0));
   const failed = analysis.status === 'failed';
   const completed = analysis.status === 'completed' || analysis.status === 'needs_clarification';
   const cancelled = analysis.status === 'cancelled';
+  const progress = completed ? 100 : Math.max(0, Math.min(100, analysis.progress ?? 0));
   const cancelling = cancellingAnalysisId === analysis.id;
   return {
     activeIndex,
