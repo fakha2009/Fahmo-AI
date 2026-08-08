@@ -5,6 +5,7 @@
     { "source": "/analyze", "destination": "/index.html" },
     { "source": "/analyze/:path*", "destination": "/index.html" },
     { "source": "/result/:path*", "destination": "/index.html" },
+    { "source": "/tasks", "destination": "/index.html" },
     { "source": "/history", "destination": "/index.html" },
     { "source": "/settings", "destination": "/index.html" },
     { "source": "/offline", "destination": "/index.html" },

@@ -42,7 +42,7 @@ try {
     if (!csp.includes(required)) throw new Error(`CSP is missing: ${required}`);
   }
 
-  for (const route of ['/analyze', '/history', '/settings', '/offline', '/install', '/shared/not-existing', '/not-found']) {
+  for (const route of ['/analyze', '/tasks', '/history', '/settings', '/offline', '/install', '/shared/not-existing', '/not-found']) {
     await check(route, 'text/html', { Accept: 'text/html' });
   }
 
