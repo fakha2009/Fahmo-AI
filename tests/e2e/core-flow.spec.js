@@ -63,7 +63,7 @@ test('local example completes the document-to-plan flow', async ({ page }) => {
   await expect(page.locator('.source-quote')).toContainText(/Необходимо заполнить/u);
 });
 
-test('production remote analysis reaches a server result with a durable source', async ({ page, browser }, testInfo) => {
+test('production remote analysis reaches a server result with a durable source', async ({ page }, testInfo) => {
   test.skip(process.env.PLAYWRIGHT_REMOTE_FLOW !== '1', 'Runs only against the deployed production stack');
   test.skip(testInfo.project.name !== 'desktop-chrome', 'Production AI flow runs once');
   test.setTimeout(180_000);
@@ -96,16 +96,18 @@ test('production remote analysis reaches a server result with a durable source',
   await expect(page.locator('.task-item').first()).toBeVisible();
 
   const resultUrl = page.url();
-  const sessionToken = await page.evaluate(() => sessionStorage.getItem('fahmo:api-session'));
-  expect(sessionToken).toBeTruthy();
-  const sourceContext = await browser.newContext();
-  await sourceContext.addInitScript((token) => sessionStorage.setItem('fahmo:api-session', token), sessionToken);
-  const sourcePage = await sourceContext.newPage();
-  await sourcePage.goto(resultUrl);
-  await expect(sourcePage.locator('[data-source-task]').first()).toBeVisible({ timeout: 30_000 });
-  await sourcePage.locator('[data-source-task]').first().click();
-  await expect(sourcePage.getByRole('dialog', { name: /Страница 1/u })).toBeVisible();
-  await expect(sourcePage.locator('.source-preview__image img')).toBeVisible({ timeout: 30_000 });
-  await expect(sourcePage.locator('.source-highlight')).toBeVisible({ timeout: 30_000 });
-  await sourceContext.close();
+  const analysisId = new URL(resultUrl).pathname.split('/').filter(Boolean).at(-1);
+  await page.evaluate(async (id) => {
+    const { dbGet, dbPut } = await import('/src/core/db.js');
+    const stored = await dbGet('analyses', id);
+    stored.sources = [];
+    stored.pages = [];
+    await dbPut('analyses', stored);
+  }, analysisId);
+  await page.reload();
+  await expect(page.locator('[data-source-task]').first()).toBeVisible({ timeout: 30_000 });
+  await page.locator('[data-source-task]').first().click();
+  await expect(page.getByRole('dialog', { name: /Страница 1/u })).toBeVisible();
+  await expect(page.locator('.source-preview__image img')).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator('.source-highlight')).toBeVisible({ timeout: 30_000 });
 });
