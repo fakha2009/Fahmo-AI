@@ -1,6 +1,8 @@
 import { z } from "zod";
 
 export const IdSchema = z.string().min(20).max(40).regex(/^[a-z0-9]+$/, "cuid-подобный id");
+/** Analyses use UUIDs; legacy/imported records may still use the compact resource id. */
+export const AnalysisIdSchema = z.union([z.uuid(), IdSchema]);
 export const OpaqueTokenSchema = z.string().min(16).max(128).regex(/^[A-Za-z0-9._-]+$/);
 
 export const IsoDateTimeSchema = z.iso.datetime();

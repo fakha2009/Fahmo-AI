@@ -2,7 +2,7 @@ import { z } from "zod";
 import {
   AnalysisStageSchema,
   AnalysisStatusSchema,
-  IdSchema,
+  AnalysisIdSchema,
   IsoDateTimeSchema,
   MessageKeySchema,
 } from "../common";
@@ -10,7 +10,7 @@ import { AnalysisResultSchema } from "../ai/analysis-result";
 
 export const AnalysisStatusResponseSchema = z
   .object({
-    analysisId: IdSchema,
+    analysisId: AnalysisIdSchema,
     status: AnalysisStatusSchema,
     stage: AnalysisStageSchema,
     progress: z.number().int().min(0).max(100).nullable(),

@@ -1,12 +1,12 @@
 import { z } from "zod";
-import { ExportJobStatusSchema, ExportKindSchema, IdSchema } from "../common";
+import { AnalysisIdSchema, ExportJobStatusSchema, ExportKindSchema, IdSchema } from "../common";
 
 export const ExportJobSchema = z
   .object({
     id: IdSchema,
     kind: ExportKindSchema,
     status: ExportJobStatusSchema,
-    analysisId: IdSchema.nullable(),
+    analysisId: AnalysisIdSchema.nullable(),
     storageKey: z.string().max(256).nullable(),
     errorCode: z.string().max(64).nullable(),
     createdAt: z.iso.datetime(),
@@ -19,7 +19,7 @@ export const ExportJobSchema = z
 export const ExportCreateRequestSchema = z
   .object({
     kind: ExportKindSchema,
-    analysisId: IdSchema.optional().nullable(),
+    analysisId: AnalysisIdSchema.optional().nullable(),
     taskIds: z.array(IdSchema).max(100).optional(),
   })
   .strict()

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   IdSchema,
+  AnalysisIdSchema,
   IsoDateTimeSchema,
   TaskPrioritySchema,
   TaskStatusSchema,
@@ -12,7 +13,7 @@ import { RevisionNumberSchema } from "../request/revision";
 export const TaskSchema = z
   .object({
     id: IdSchema,
-    analysisId: IdSchema.nullable(),
+    analysisId: AnalysisIdSchema.nullable(),
     title: z.string().min(1).max(500),
     description: z.string().min(1).max(5000).nullable(),
     simpleTitle: z.string().min(1).max(200),
@@ -32,7 +33,7 @@ export const TaskSchema = z
 
 export const TaskCreateSchema = z
   .object({
-    analysisId: IdSchema.optional(),
+    analysisId: AnalysisIdSchema.optional(),
     title: z.string().min(1).max(500),
     description: z.string().min(1).max(5000).nullable().optional(),
     simpleTitle: z.string().min(1).max(200).optional(),
