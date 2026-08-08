@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { MAX_FILE_SIZE, validateFile, validatePageLimit, validateText } from '../src/domain/validators.js';
+import { textUploadFilename } from '../src/core/api.js';
 
 test('accepts supported image file', () => {
   const file = { name: 'page.png', type: 'image/png', size: 1024 };
@@ -17,4 +18,10 @@ test('validates page and text limits', () => {
   assert.equal(validatePageLimit(9, 2).ok, false);
   assert.equal(validateText('  ').ok, false);
   assert.equal(validateText('Нужно оплатить счёт.').ok, true);
+});
+
+test('text uploads always use an extension accepted by the backend', () => {
+  assert.equal(textUploadFilename('Текст'), 'Текст.txt');
+  assert.equal(textUploadFilename('notes.txt'), 'notes.txt');
+  assert.equal(textUploadFilename(''), 'document.txt');
 });

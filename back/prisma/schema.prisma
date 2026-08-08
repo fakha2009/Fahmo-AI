@@ -1,0 +1,576 @@
+// Модели по ТЗ §19 (редакция 2.0). Дизайн: docs/ARCHITECTURE.md §6.
+//
+// CHECK-ограничения и partial-индексы добавляются SQL в миграции (Prisma их не декларирует):
+//   - owner isolation: (session_id IS NOT NULL) OR (user_id IS NOT NULL)
+//     для Analysis, Task, PushSubscription, UserPreferences, ExportJob
+//   - revision >= 1: Analysis, Task, Reminder, UserPreferences
+//   - Analysis: progress IS NULL OR (0..100); result_version >= 1
+//   - AnalysisInputMetadata: size_bytes >= 0, input_index >= 0, page_count IS NULL OR <= 10
+//   - AnalysisVersion: version >= 1; AnalysisShare: view_count >= 0
+//   - partial unique: Task(session_id, client_mutation_id) / (user_id, client_mutation_id) WHERE NOT NULL
+//   - partial index: Reminder(scheduled_at) WHERE status = 'scheduled'
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// URL подключения задаётся в prisma.config.ts (Prisma 7).
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================== Enums ==============================
+
+enum AnalysisStatus {
+  QUEUED
+  VALIDATING
+  PROCESSING
+  NEEDS_CLARIFICATION
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum AnalysisStage {
+  QUEUED
+  VALIDATING
+  PREPARING_FILES
+  EXTRACTING_CONTENT
+  DETECTING_DOCUMENT_TYPE
+  ANALYZING
+  CHECKING_RESULT
+  NORMALIZING
+  SAVING
+  COMPLETED
+}
+
+enum SourceType {
+  TEXT
+  IMAGE
+  PDF
+  MULTI_IMAGE
+}
+
+enum DocumentType {
+  ANNOUNCEMENT
+  WORK_ASSIGNMENT
+  HANDWRITTEN_NOTE
+  CONTRACT
+  INVOICE
+  CERTIFICATE
+  IDENTITY
+  STATEMENT
+  LETTER
+  NOTICE
+  RECEIPT
+  OTHER
+}
+
+enum OutputLanguage {
+  RU
+  TG
+  EN
+}
+
+enum ExplanationMode {
+  STANDARD
+  SIMPLE
+}
+
+enum RetentionMode {
+  HISTORY
+  TEMPORARY
+}
+
+enum SourcePreviewMode {
+  HISTORY
+  TEMPORARY
+  NO_PREVIEW
+}
+
+enum ThemeMode {
+  SYSTEM
+  LIGHT
+  DARK
+}
+
+enum TextScale {
+  NORMAL
+  LARGE
+}
+
+enum ConfidenceLevel {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum TaskPriority {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum TaskStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+}
+
+enum ReminderChannel {
+  IN_APP
+  WEB_PUSH
+  CALENDAR
+}
+
+enum ReminderStatus {
+  SCHEDULED
+  SENT
+  CANCELLED
+  FAILED
+}
+
+enum ClarificationStatus {
+  OPEN
+  ANSWERED
+  CANCELLED
+}
+
+enum AIRunOperation {
+  ANALYZE_DOCUMENT
+  ANALYZE_TEXT
+  ANSWER_CLARIFICATION
+  SIMPLIFY_RESULT
+  REANALYZE
+}
+
+enum AIRunStatus {
+  SUCCESS
+  FAILED
+}
+
+enum ChangeSource {
+  AI
+  USER
+  CLARIFICATION
+  REANALYZE
+}
+
+enum ExportKind {
+  PDF
+  ICS
+  DATA
+}
+
+enum AuditActorType {
+  SESSION
+  USER
+  SYSTEM
+  PUBLIC
+}
+
+enum JobStatus {
+  QUEUED
+  RUNNING
+  DONE
+  FAILED
+}
+
+// ============================== Модели ==============================
+
+model User {
+  id                 String   @id @default(cuid())
+  email              String?  @unique
+  display_name       String?
+  preferred_language String?
+  timezone           String?
+  created_at         DateTime @default(now())
+  updated_at         DateTime @updatedAt
+  deleted_at         DateTime?
+
+  anonymousSessions AnonymousSession[]
+  analyses          Analysis[]
+  tasks             Task[]
+  pushSubscriptions PushSubscription[]
+  preferences       UserPreferences[]
+  exportJobs        ExportJob[]
+
+  @@index([deleted_at])
+}
+
+model AnonymousSession {
+  id           String    @id @default(cuid())
+  token_hash   String    @unique
+  user_id      String?
+  user         User?     @relation(fields: [user_id], references: [id], onDelete: Restrict)
+  created_at   DateTime  @default(now())
+  last_seen_at DateTime  @default(now())
+  expires_at   DateTime
+  revoked_at   DateTime?
+
+  analyses          Analysis[]
+  tasks             Task[]
+  pushSubscriptions PushSubscription[]
+  preferences       UserPreferences[]
+  exportJobs        ExportJob[]
+
+  @@index([user_id])
+  @@index([expires_at])
+  @@index([last_seen_at])
+  @@index([revoked_at])
+}
+
+model UserPreferences {
+  id                          String          @id @default(cuid())
+  session_id                  String?
+  user_id                     String?
+  session                     AnonymousSession? @relation(fields: [session_id], references: [id], onDelete: Restrict)
+  user                        User?            @relation(fields: [user_id], references: [id], onDelete: Restrict)
+  interface_language          OutputLanguage  @default(RU)
+  output_language             OutputLanguage  @default(RU)
+  explanation_mode            ExplanationMode @default(STANDARD)
+  theme                       ThemeMode       @default(SYSTEM)
+  reduced_motion              Boolean         @default(false)
+  text_scale                  TextScale       @default(NORMAL)
+  timezone                    String          @default("Asia/Dushanbe")
+  preferred_provider          String?
+  save_history                Boolean         @default(true)
+  source_preview_mode         SourcePreviewMode @default(HISTORY)
+  retention_mode              RetentionMode   @default(HISTORY)
+  default_reminder_offset_minutes Int?
+  push_enabled                Boolean         @default(false)
+  revision                    Int             @default(1)
+  created_at                  DateTime        @default(now())
+  updated_at                  DateTime        @updatedAt
+
+  // Настройки уведомлений (endpoint /notification-preferences) — подмножество полей этой же модели.
+
+  @@unique([session_id])
+  @@unique([user_id])
+}
+
+model Analysis {
+  id                 String            @id @default(cuid())
+  session_id         String?
+  user_id            String?
+  session            AnonymousSession? @relation(fields: [session_id], references: [id], onDelete: Restrict)
+  user               User?             @relation(fields: [user_id], references: [id], onDelete: Restrict)
+  status             AnalysisStatus    @default(QUEUED)
+  stage              AnalysisStage     @default(QUEUED)
+  progress           Int?
+  source_type        SourceType
+  document_type      DocumentType      @default(OTHER)
+  output_language    OutputLanguage    @default(RU)
+  explanation_mode   ExplanationMode   @default(STANDARD)
+  retention_mode     RetentionMode     @default(HISTORY)
+  source_preview_mode SourcePreviewMode @default(HISTORY)
+  detected_languages String[]          @default([])
+  provider           String?
+  model              String?
+  result_version     Int               @default(1)
+  revision           Int               @default(1)
+  overall_confidence ConfidenceLevel?
+  structured_result  Json?
+  user_edits         Json?
+  extracted_text_encrypted String?
+  error_code         String?
+  created_at         DateTime          @default(now())
+  updated_at         DateTime          @updatedAt
+  completed_at       DateTime?
+  expires_at         DateTime?
+  deleted_at         DateTime?
+
+  inputs         AnalysisInputMetadata[]
+  sourceAssets   AnalysisSourceAsset[]
+  versions       AnalysisVersion[]
+  clarifications ClarificationQuestion[]
+  tasks          Task[]
+  runs           AIRun[]
+  shares         AnalysisShare[]
+  exportJobs     ExportJob[]
+  events         AnalysisEvent[]
+
+  @@index([session_id, deleted_at, created_at])
+  @@index([user_id, deleted_at, created_at])
+  @@index([status, updated_at])
+  @@index([created_at])
+  @@index([expires_at])
+  @@index([deleted_at])
+}
+
+model AnalysisEvent {
+  id          Int           @id @default(autoincrement())
+  analysis_id String
+  analysis    Analysis      @relation(fields: [analysis_id], references: [id], onDelete: Cascade)
+  type        String
+  stage       AnalysisStage
+  progress    Int
+  message_key String
+  payload     Json?
+  created_at  DateTime      @default(now())
+
+  // append-only: события не обновляются и не удаляются приложением;
+  // монотонный автоинкрементный id используется как SSE-курсор (Last-Event-ID),
+  // чистка старых — cron по created_at.
+
+  @@index([analysis_id, id])
+  @@index([created_at])
+}
+
+model AnalysisInputMetadata {
+  id                         String    @id @default(cuid())
+  analysis_id                String
+  analysis                   Analysis  @relation(fields: [analysis_id], references: [id], onDelete: Cascade)
+  input_index                Int
+  original_type              String
+  original_name              String?
+  mime_type                  String
+  size_bytes                 Int
+  page_count                 Int?
+  sha256                     String
+  staging_key                String?
+  text_content               String?
+  temporary_provider_file_id String?
+  temporary_file_deleted_at  DateTime?
+  created_at                 DateTime  @default(now())
+
+  @@unique([analysis_id, input_index])
+  @@index([sha256])
+}
+
+model AnalysisSourceAsset {
+  id             String   @id @default(cuid())
+  analysis_id    String
+  analysis       Analysis @relation(fields: [analysis_id], references: [id], onDelete: Cascade)
+  client_page_id String
+  input_index    Int
+  page_number    Int
+  storage_key    String   @unique
+  mime_type      String
+  width          Int
+  height         Int
+  sha256         String
+  expires_at     DateTime
+  created_at     DateTime @default(now())
+
+  @@index([analysis_id])
+  @@index([expires_at])
+}
+
+model AnalysisVersion {
+  id               String       @id @default(cuid())
+  analysis_id      String
+  analysis         Analysis     @relation(fields: [analysis_id], references: [id], onDelete: Cascade)
+  version          Int
+  change_source    ChangeSource
+  ai_original      Json?
+  user_edited      Json?
+  structured_result Json?
+  changed_fields   Json?
+  created_at       DateTime     @default(now())
+
+  @@unique([analysis_id, version])
+  @@index([analysis_id])
+}
+
+model ClarificationQuestion {
+  id                String              @id @default(cuid())
+  analysis_id       String
+  analysis          Analysis            @relation(fields: [analysis_id], references: [id], onDelete: Cascade)
+  field_path        String
+  question          String
+  suggested_answers Json
+  required          Boolean             @default(true)
+  status            ClarificationStatus @default(OPEN)
+  answer            String?
+  answered_at       DateTime?
+  created_at        DateTime            @default(now())
+
+  @@index([analysis_id, status])
+}
+
+model Task {
+  id                 String            @id @default(cuid())
+  analysis_id        String?
+  session_id         String?
+  user_id            String?
+  analysis           Analysis?         @relation(fields: [analysis_id], references: [id], onDelete: Cascade)
+  session            AnonymousSession? @relation(fields: [session_id], references: [id], onDelete: Restrict)
+  user               User?             @relation(fields: [user_id], references: [id], onDelete: Restrict)
+  title              String
+  description        String?
+  simple_title       String
+  simple_description String?
+  assignee_text      String?
+  priority           TaskPriority      @default(MEDIUM)
+  status             TaskStatus        @default(PENDING)
+  due_at             DateTime?
+  timezone           String?
+  source_data        Json?
+  ai_original        Json?
+  client_mutation_id String?
+  revision           Int               @default(1)
+  completed_at       DateTime?
+  created_at         DateTime          @default(now())
+  updated_at         DateTime          @updatedAt
+  deleted_at         DateTime?
+
+  reminders Reminder[]
+
+  // partial unique по client_mutation_id — SQL-миграция (см. шапку файла).
+  @@index([session_id, deleted_at, updated_at])
+  @@index([user_id, deleted_at, updated_at])
+  @@index([analysis_id, deleted_at])
+  @@index([status, deleted_at])
+  @@index([deleted_at])
+}
+
+model Reminder {
+  id              String          @id @default(cuid())
+  task_id         String
+  task            Task            @relation(fields: [task_id], references: [id], onDelete: Cascade)
+  scheduled_at    DateTime
+  timezone        String
+  channel         ReminderChannel @default(IN_APP)
+  status          ReminderStatus  @default(SCHEDULED)
+  idempotency_key String?         @unique
+  revision        Int             @default(1)
+  attempt_count   Int             @default(0)
+  last_error      String?
+  sent_at         DateTime?
+  created_at      DateTime        @default(now())
+  updated_at      DateTime        @updatedAt
+
+  @@index([status, scheduled_at])
+  @@index([scheduled_at])
+  @@index([task_id])
+}
+
+model PushSubscription {
+  id                 String            @id @default(cuid())
+  session_id         String?
+  user_id            String?
+  session            AnonymousSession? @relation(fields: [session_id], references: [id], onDelete: Restrict)
+  user               User?             @relation(fields: [user_id], references: [id], onDelete: Restrict)
+  endpoint_encrypted String
+  p256dh_encrypted   String
+  auth_encrypted     String
+  created_at         DateTime          @default(now())
+  last_used_at       DateTime?
+  revoked_at         DateTime?
+
+  @@index([session_id, revoked_at])
+  @@index([user_id, revoked_at])
+}
+
+model AnalysisShare {
+  id            String   @id @default(cuid())
+  analysis_id   String
+  analysis      Analysis @relation(fields: [analysis_id], references: [id], onDelete: Cascade)
+  token_hash    String   @unique
+  snapshot      Json
+  expires_at    DateTime?
+  revoked_at    DateTime?
+  created_at    DateTime @default(now())
+  last_viewed_at DateTime?
+  view_count    Int      @default(0)
+
+  @@index([analysis_id])
+  @@index([expires_at])
+  @@index([revoked_at])
+}
+
+model ExportJob {
+  id              String            @id @default(cuid())
+  kind            ExportKind
+  status          JobStatus         @default(QUEUED)
+  analysis_id     String?
+  session_id      String?
+  user_id         String?
+  analysis        Analysis?         @relation(fields: [analysis_id], references: [id], onDelete: Cascade)
+  session         AnonymousSession? @relation(fields: [session_id], references: [id], onDelete: Restrict)
+  user            User?             @relation(fields: [user_id], references: [id], onDelete: Restrict)
+  storage_key     String?
+  payload         Json?
+  error_code      String?
+  created_at      DateTime          @default(now())
+  updated_at      DateTime          @updatedAt
+  completed_at    DateTime?
+  expires_at      DateTime?
+
+  @@index([session_id, created_at])
+  @@index([user_id, created_at])
+  @@index([status])
+  @@index([expires_at])
+}
+
+model AIRun {
+  id                  String         @id @default(cuid())
+  analysis_id         String
+  analysis            Analysis       @relation(fields: [analysis_id], references: [id], onDelete: Cascade)
+  provider            String
+  model               String
+  operation           AIRunOperation
+  status              AIRunStatus    @default(SUCCESS)
+  latency_ms          Int?
+  input_tokens        Int?
+  output_tokens       Int?
+  estimated_cost      Decimal?       @db.Decimal(12, 6)
+  provider_request_id String?
+  error_code          String?
+  created_at          DateTime       @default(now())
+
+  @@index([analysis_id, created_at])
+  @@index([provider, created_at])
+  @@index([status, created_at])
+}
+
+model IdempotencyRecord {
+  id              String   @id @default(cuid())
+  actor_key       String
+  idempotency_key String
+  endpoint        String
+  request_hash    String?
+  response_status Int
+  response_body   Json
+  created_at      DateTime @default(now())
+  expires_at      DateTime
+
+  @@unique([actor_key, idempotency_key])
+  @@index([expires_at])
+}
+
+model AuditEvent {
+  id          String         @id @default(cuid())
+  actor_type  AuditActorType
+  actor_id    String?
+  entity_type String
+  entity_id   String?
+  action      String
+  params      Json?
+  created_at  DateTime       @default(now())
+
+  // append-only: приложение не обновляет и не удаляет записи; чистка — cron по created_at.
+
+  @@index([entity_type, entity_id, created_at])
+  @@index([actor_type, actor_id, created_at])
+  @@index([created_at])
+}
+
+model JobQueueItem {
+  id            String    @id @default(cuid())
+  queue         String
+  dedup_key     String?
+  payload       Json?
+  status        JobStatus @default(QUEUED)
+  available_at  DateTime  @default(now())
+  attempt_count Int       @default(0)
+  last_error    String?
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+  completed_at  DateTime?
+
+  @@unique([queue, dedup_key])
+  @@index([queue, status, available_at])
+  @@index([status, available_at])
+}

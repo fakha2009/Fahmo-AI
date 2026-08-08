@@ -1,6 +1,6 @@
 import { dbClear, exportDatabase } from '../core/db.js';
 import { setLanguage, t } from '../core/i18n.js';
-import { getSettings, updateSettings } from '../core/settings.js';
+import { getSettings, isApiConfigurationLocked, updateSettings } from '../core/settings.js';
 import { downloadBlob, escapeAttribute, escapeHtml } from '../core/utils.js';
 import { confirmDialog } from '../ui/dialogs.js';
 import { icon } from '../ui/icons.js';
@@ -54,14 +54,14 @@ function render() {
               <div class="setting-row__label"><strong>${escapeHtml(t('defaultExplanation'))}</strong><span>${escapeHtml(t('verySimpleDesc'))}</span></div>
               <select class="select" data-setting="explanationLevel">${option('standard', t('standard'), settings.explanationLevel)}${option('simple', t('verySimple'), settings.explanationLevel)}</select>
             </div>
-            <div class="setting-row">
+            ${isApiConfigurationLocked() ? '' : `<div class="setting-row">
               <div class="setting-row__label"><strong>${escapeHtml(t('analysisMode'))}</strong><span>${escapeHtml(settings.analysisMode === 'remote' ? t('remoteProvider') : t('localProvider'))}</span></div>
               <select class="select" data-setting="analysisMode">${option('local', t('localProvider'), settings.analysisMode)}${option('remote', t('remoteProvider'), settings.analysisMode)}</select>
             </div>
             <div class="setting-row">
               <div class="setting-row__label"><strong>${escapeHtml(t('apiUrl'))}</strong><span>${escapeHtml(t('apiUrlHint'))}</span></div>
               <input class="input" type="url" inputmode="url" data-api-url value="${escapeAttribute(settings.apiBaseUrl)}" placeholder="https://api.example.com">
-            </div>
+            </div>`}
           </section>
 
           <section class="card settings-section">
@@ -136,8 +136,8 @@ async function exportData() {
   const sanitized = {
     ...database,
     data: {
-      analyses: database.data.analyses.map((item) => ({ ...item, sources: item.sources?.map(({ blob, ...source }) => source) })),
-      drafts: database.data.drafts.map((item) => ({ ...item, sources: item.sources?.map(({ blob, ...source }) => source) })),
+      analyses: database.data.analyses.map((item) => ({ ...item, sources: item.sources?.map(({ blob: _blob, ...source }) => source) })),
+      drafts: database.data.drafts.map((item) => ({ ...item, sources: item.sources?.map(({ blob: _blob, ...source }) => source) })),
       settings: database.data.settings,
       shares: database.data.shares
     }

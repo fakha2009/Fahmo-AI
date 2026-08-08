@@ -1,7 +1,9 @@
 import { dbGet, dbPut } from './db.js';
+import { normalizeApiBaseUrl } from './api.js';
 import { getLanguage, setLanguage } from './i18n.js';
 
 const runtimeConfig = globalThis.__FAHMO_CONFIG__ ?? {};
+const runtimeHttpMode = runtimeConfig.apiMode === 'http';
 
 export const DEFAULT_SETTINGS = Object.freeze({
   id: 'app-settings',
@@ -11,8 +13,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
   reduceMotion: false,
   resultLanguage: 'ru',
   explanationLevel: 'standard',
-  analysisMode: ['local', 'remote'].includes(runtimeConfig.analysisMode) ? runtimeConfig.analysisMode : 'local',
-  apiBaseUrl: typeof runtimeConfig.apiBaseUrl === 'string' ? runtimeConfig.apiBaseUrl.replace(/\/+$/, '') : '',
+  analysisMode: runtimeHttpMode ? 'remote' : 'local',
+  apiBaseUrl: normalizeApiBaseUrl(runtimeConfig.apiBaseUrl),
   notifications: false,
   reminderMinutes: 60,
   updatedAt: new Date(0).toISOString()
@@ -22,7 +24,15 @@ let cache = { ...DEFAULT_SETTINGS };
 
 export async function loadSettings() {
   const stored = await dbGet('settings', DEFAULT_SETTINGS.id).catch(() => null);
-  cache = { ...DEFAULT_SETTINGS, ...(stored ?? {}) };
+  cache = {
+    ...DEFAULT_SETTINGS,
+    ...(stored ?? {}),
+  };
+  cache.apiBaseUrl = normalizeApiBaseUrl(cache.apiBaseUrl);
+  if (runtimeHttpMode && DEFAULT_SETTINGS.apiBaseUrl) {
+    cache.apiBaseUrl = DEFAULT_SETTINGS.apiBaseUrl;
+    cache.analysisMode = 'remote';
+  }
   const localTheme = localStorage.getItem('fahmo:theme');
   const localLanguage = localStorage.getItem('fahmo:language');
   const localScale = Number(localStorage.getItem('fahmo:text-scale'));
@@ -38,10 +48,23 @@ export async function loadSettings() {
 export function getSettings() { return { ...cache }; }
 
 export async function updateSettings(patch) {
-  cache = { ...cache, ...patch, id: DEFAULT_SETTINGS.id, updatedAt: new Date().toISOString() };
+  const safePatch = { ...patch };
+  if (isApiConfigurationLocked()) {
+    delete safePatch.apiBaseUrl;
+    delete safePatch.analysisMode;
+  }
+  const normalizedPatch = { ...safePatch };
+  if (Object.prototype.hasOwnProperty.call(safePatch, 'apiBaseUrl')) {
+    normalizedPatch.apiBaseUrl = normalizeApiBaseUrl(safePatch.apiBaseUrl);
+  }
+  cache = { ...cache, ...normalizedPatch, id: DEFAULT_SETTINGS.id, updatedAt: new Date().toISOString() };
   applySettings(cache);
   await dbPut('settings', cache);
   return getSettings();
+}
+
+export function isApiConfigurationLocked() {
+  return runtimeConfig.environment === 'production' || runtimeConfig.allowApiSettings !== true;
 }
 
 export function applySettings(settings, options = {}) {

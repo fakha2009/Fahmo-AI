@@ -8,7 +8,6 @@ import { analyzeTextDocument } from '../domain/analyzer.js';
 import { collectDocumentText } from '../domain/document-reader.js';
 import { icon } from '../ui/icons.js';
 import { renderShell } from '../ui/shell.js';
-import { showToast } from '../ui/toast.js';
 
 let controller;
 let activeAnalysisId;
@@ -20,7 +19,7 @@ function renderProcess(analysis, options = {}) {
   const activeIndex = stageOrder.indexOf(analysis.progressStep ?? 'read');
   const progress = Math.max(0, Math.min(100, analysis.progress ?? 0));
   const failed = analysis.status === 'failed';
-  const completed = analysis.status === 'completed';
+  const completed = analysis.status === 'completed' || analysis.status === 'needs_clarification';
   const cancelled = analysis.status === 'cancelled';
   renderShell({
     title: t('processTitle'),
@@ -62,7 +61,7 @@ async function updateProgress(analysis, patch) {
   if (activeAnalysisId === analysis.id) renderProcess(analysis);
 }
 
-function normalizeRemoteResult(payload, analysis) {
+export function normalizeRemoteResult(payload, analysis) {
   const result = payload.result ?? payload.data?.result ?? payload;
   if (!result || typeof result !== 'object') throw new Error('Backend returned an invalid analysis result');
   return {
@@ -72,7 +71,7 @@ function normalizeRemoteResult(payload, analysis) {
     resultLanguage: result.resultLanguage || analysis.settings.resultLanguage || 'ru',
     createdAt: result.createdAt || new Date().toISOString(),
     summary: typeof result.summary === 'string' ? { standard: result.summary, simple: result.simpleSummary || result.summary } : (result.summary || { standard: '', simple: '' }),
-    tasks: Array.isArray(result.tasks) ? result.tasks.map((task, index) => ({ id: task.id || `remote_task_${index}`, title: task.title || task.name || '', simpleTitle: task.simpleTitle || task.simple_title || task.title || task.name || '', description: task.description || '', completed: Boolean(task.completed), priority: task.priority || 'medium', dueDate: task.dueDate || task.due_date || null, dueTime: task.dueTime || task.due_time || null, location: task.location || null, reminderMinutes: task.reminderMinutes ?? task.reminder_minutes ?? null, source: task.source || null, userEdited: Boolean(task.userEdited) })) : [],
+    tasks: Array.isArray(result.tasks) ? result.tasks.map((task, index) => ({ id: task.id || `remote_task_${index}`, title: task.title || task.name || '', simpleTitle: task.simpleTitle || task.simple_title || task.title || task.name || '', description: task.description || '', completed: Boolean(task.completed), priority: task.priority || 'medium', dueDate: task.dueDate || task.due_date || null, dueTime: task.dueTime || task.due_time || null, location: task.location || null, reminderMinutes: task.reminderMinutes ?? task.reminder_minutes ?? null, source: task.source || null, userEdited: Boolean(task.userEdited), revision: Number.isInteger(task.revision) ? task.revision : 1 })) : [],
     importantData: Array.isArray(result.importantData) ? result.importantData.map((item, index) => ({ id: item.id || `remote_data_${index}`, type: item.type || 'other', value: item.value == null ? '' : String(item.value), confidence: item.confidence || 'medium', source: item.source || null, userEdited: Boolean(item.userEdited) })) : [],
     clarifications: Array.isArray(result.clarifications) ? result.clarifications.map((item, index) => ({ id: item.id || `remote_clarification_${index}`, ...item })) : [],
     warnings: Array.isArray(result.warnings) ? result.warnings.map((item, index) => ({ id: item.id || `remote_warning_${index}`, title: item.title || t('warnings'), message: item.message || '', severity: item.severity || 'warning', ...item })) : [],
@@ -129,8 +128,22 @@ async function runRemote(analysis, signal) {
       await updateProgress(analysis, { status: 'completed', progressStep: 'tasks', progress: 100, completedAt: new Date().toISOString() });
       return;
     }
+    if (status === 'needs_clarification') {
+      analysis.result = normalizeRemoteResult(payload, analysis);
+      analysis.title = analysis.result.title;
+      await updateProgress(analysis, { status: 'needs_clarification', progressStep: 'verify', progress: Math.max(70, progress) });
+      return;
+    }
     if (status === 'failed' || status === 'cancelled') {
-      throw Object.assign(new Error(payload.message || payload.error?.message || t('genericError')), { code: payload.error?.code || status.toUpperCase(), requestId: payload.requestId });
+      const knownMessage = ({
+        'errors.unsupportedFileType': 'invalidFormat',
+        'errors.fileTooLarge': 'fileTooLarge',
+        'errors.tooManyPages': 'tooManyPages',
+      })[payload.messageKey];
+      throw Object.assign(new Error(payload.message || payload.error?.message || t(knownMessage || 'genericError')), {
+        code: payload.error?.code || payload.messageKey || status.toUpperCase(),
+        requestId: payload.requestId,
+      });
     }
     await updateProgress(analysis, { status: 'processing', progressStep: stageOrder.includes(stage) ? stage : 'read', progress: Math.max(5, Math.min(95, progress)) });
     attempts += 1;
@@ -192,7 +205,7 @@ export async function processPage({ params }) {
     return { title: t('errorTitle') };
   }
   renderProcess(analysis);
-  if (analysis.status === 'completed') return { title: t('statusCompleted') };
+  if (analysis.status === 'completed' || analysis.status === 'needs_clarification') return { title: t('statusCompleted') };
   if (!['failed', 'cancelled'].includes(analysis.status)) runAnalysis(analysis);
   return {
     title: t('processTitle'),

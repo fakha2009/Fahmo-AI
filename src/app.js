@@ -21,6 +21,8 @@ registerRoute('/install', installPage);
 registerRoute('/shared/:shareId', sharedPage);
 registerRoute('/not-found', notFoundPage);
 
+let reloadForServiceWorkerUpdate = false;
+
 window.addEventListener('beforeinstallprompt', (event) => {
   event.preventDefault();
   window.__fahmoInstallPrompt = event;
@@ -54,7 +56,9 @@ async function registerServiceWorker() {
         if (worker.state === 'installed' && navigator.serviceWorker.controller) showUpdate(registration);
       });
     });
-    navigator.serviceWorker.addEventListener('controllerchange', () => location.reload());
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (reloadForServiceWorkerUpdate) location.reload();
+    });
   } catch (error) {
     console.warn('Service worker registration failed', error);
   }
@@ -68,7 +72,10 @@ function showUpdate(registration) {
     duration: 0,
     action: {
       label: t('updateNow'),
-      onClick: () => registration.waiting?.postMessage({ type: 'SKIP_WAITING' })
+      onClick: () => {
+        reloadForServiceWorkerUpdate = true;
+        registration.waiting?.postMessage({ type: 'SKIP_WAITING' });
+      }
     }
   });
 }

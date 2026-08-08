@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "AIRunOperation" ADD VALUE 'SIMPLIFY_RESULT';

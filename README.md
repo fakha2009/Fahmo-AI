@@ -1,138 +1,106 @@
-# Фаҳмо AI — frontend PWA
+# Fahmo AI
 
-**Фаҳмо AI** превращает документ в понятное объяснение, список действий, важные даты, суммы, адреса и контакты.
+Fahmo AI превращает PDF, изображения и текст в понятное объяснение, список действий, важные даты, суммы, места и контакты.
 
-Проект собран как адаптивное local-first Progressive Web App без runtime-зависимостей. Он запускается сразу после распаковки, работает на телефонах и компьютерах, хранит черновики и результаты в IndexedDB и подключается к production backend через единый типизированный по контракту API-слой.
+Репозиторий содержит два production-компонента:
 
-## Что реализовано
+- frontend — адаптивная PWA без runtime-зависимостей, размещаемая на Vercel;
+- `back/` — Node.js/TypeScript API, фоновые обработчики, Prisma/PostgreSQL и AI/OCR-провайдеры для Railway.
 
-- адаптивная светлая и тёмная тема, системный режим;
-- русский, тоҷикӣ и English;
-- загрузка PDF, изображений и TXT;
-- камера смартфона, drag-and-drop и вставка изображения через clipboard;
-- вставка обычного текста и автосохранение черновика;
-- несколько страниц, изменение порядка, удаление, замена, поворот, обрезка и просмотр;
-- локальный анализ текста без передачи документа;
-- подключение удалённого AI/OCR backend;
-- восстановление анализа после обновления страницы;
-- структурированный результат: объяснение, задачи, важные данные, предупреждения, уточнения и источники;
-- редактирование и выполнение задач;
-- режим «Очень просто»;
-- копирование результата, PDF, `.ics`, Web Share и ссылка на сохранённый результат;
-- история, поиск, фильтры, переименование и удаление;
-- PWA-установка, Service Worker и offline-кеш;
-- Web Notifications;
-- WCAG-ориентированная клавиатурная навигация, видимый focus, safe-area и reduced motion;
-- CSP, защита URL, отсутствие секретов и исключение исходных документов из аналитики.
+## Возможности
 
-## Быстрый запуск
+- русский, тоҷикӣ и English; светлая, тёмная и системная темы;
+- PDF, PNG, JPG, WEBP и TXT до 10 МБ, до 10 страниц, текст до 50 000 символов;
+- камера, drag-and-drop, clipboard, порядок страниц, поворот, обрезка и preview;
+- локальный текстовый анализ и серверный AI/OCR через единый `/api/v1`;
+- устойчивый прогресс, уточнения, задачи с optimistic concurrency и напоминания;
+- PDF/ICS/data export, публичные отзываемые ссылки и локальная история;
+- PWA/offline app shell, keyboard focus, reduced motion и отдельная mobile-композиция;
+- server-side ownership, Origin/CSRF-проверка, лимиты, транзакции и идемпотентность.
 
-Требуется **Node.js 20+**.
+Ключи AI-провайдеров никогда не передаются во frontend. `config.js` и переменные `NEXT_PUBLIC_*` являются публичной конфигурацией.
+
+## Локальный запуск
+
+Требуется Node.js 20+ и PostgreSQL для backend.
+
+Frontend:
 
 ```bash
-npm start
-```
-
-Откройте:
-
-```text
-http://127.0.0.1:4173
-```
-
-Windows:
-
-```bat
-start.bat
-```
-
-Linux/macOS:
-
-```bash
-./start.sh
-```
-
-Для режима разработки без долговременного HTTP-кеша:
-
-```bash
+npm install
 npm run dev
 ```
 
-## Проверка
+Backend:
 
 ```bash
+cd back
+copy .env.example .env
+npm install
+npm run prisma:deploy
+npm start
+```
+
+По умолчанию frontend доступен на `http://127.0.0.1:4173`, backend — на `http://127.0.0.1:8787`.
+
+## Проверки
+
+Frontend:
+
+```bash
+npm run lint
+npm run typecheck
 npm run verify
+npm run build
 npm run smoke
+npm run test:e2e
 ```
 
-`verify` выполняет синтаксическую проверку и unit-тесты. `smoke` запускает сервер на временном порту и проверяет основные маршруты, manifest, Service Worker, конфигурацию и статические ресурсы.
+Backend:
 
-## Подключение backend
-
-Frontend не содержит и не должен содержать ключи Gemini, DeepSeek или других AI-провайдеров. Ключи остаются только на backend.
-
-Есть два способа указать публичный URL API:
-
-1. открыть **Настройки → Анализ → Адрес backend API**;
-2. изменить `config.js` перед deployment:
-
-```js
-window.__FAHMO_CONFIG__ = Object.freeze({
-  apiBaseUrl: 'https://api.example.com',
-  analysisMode: 'remote',
-  appVersion: '1.1.0'
-});
+```bash
+cd back
+npm run lint
+npm run build
+npm run prisma:validate
+npm test
 ```
 
-Полный контракт находится в [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md).
+HTTP integration smoke запускается против работающего backend:
 
-## Локальный режим
+```bash
+cd back
+npm run smoke:http
+```
 
-Локальный режим — реальная, а не демонстрационная обработка. Он извлекает только факты, которые явно присутствуют в обычном тексте или в доступном текстовом слое PDF. Он не выдумывает отсутствующие данные.
+## Production-конфигурация
 
-Для фотографии или сканированного PDF браузеру нужен OCR. Если браузер не предоставляет `TextDetector`, приложение честно показывает предупреждение и предлагает подключить backend либо вставить текст вручную.
+Frontend build использует:
 
-Кнопка **«Попробовать на примере»** использует явно помеченный безопасный демонстрационный документ и не имитирует API.
+```text
+NEXT_PUBLIC_API_MODE=http
+NEXT_PUBLIC_API_BASE_URL=https://<railway-domain>
+NEXT_PUBLIC_API_PREFIX=/api/v1
+NEXT_PUBLIC_APP_URL=https://<vercel-domain>
+```
+
+Production build прекращается с ошибкой, если API URL не HTTPS, указывает на localhost или включён локальный режим.
+
+Backend использует `back/.env.example` как перечень переменных. Для Railway обязательны PostgreSQL `DATABASE_URL`, криптографические секреты, минимум один AI-провайдер, `FRONTEND_ORIGIN`, CORS origins и постоянный `STORAGE_DIR` (обычно путь подключённого volume).
+
+Endpoints готовности: `GET /api/health` и `GET /api/ready`. Экспортируемые схемы ответов находятся в [OpenAPI schemas](back/openapi/schemas).
 
 ## Структура
 
 ```text
-config.js                 публичная runtime-конфигурация
-index.html                HTML shell
-manifest.webmanifest      PWA manifest
-server.mjs                безопасный SPA static server
-sw.js                     offline app shell
-public/assets             рабочие изображения и PWA-иконки
-src/core                  router, IndexedDB, settings, API client, i18n
-src/domain                валидация, извлечение текста, анализ, PDF/ICS
-src/pages                 страницы приложения
-src/ui                    shell, dialogs, icons, toast
-src/styles.css            дизайн-система и адаптивность
-tests                     unit-тесты
-scripts                   проверки и smoke test
-docs                      ТЗ, архитектура, API и правила использования assets
+src/                 frontend core, domain, pages и UI
+public/assets/       PWA icons и продуктовые изображения
+tests/               frontend unit и browser E2E
+scripts/             build, syntax и smoke проверки
+back/src/            HTTP, application, domain и infrastructure
+back/prisma/         схема и миграции PostgreSQL
+back/tests/          backend unit/integration-level tests
+back/openapi/        API contract
 ```
 
-## Визуальные материалы
-
-Большой макет со всеми экранами хранится только в `docs/design-reference/master-reference.png` как референс и **не вставляется в приложение как готовый интерфейс**.
-
-Рабочие изображения подключаются раздельно по теме:
-
-- `mascot-light.*` — светлая тема;
-- `mascot-dark.*` — тёмная тема;
-- `hero-documents-light.*` — hero светлой темы;
-- `hero-documents-dark.*` — hero тёмной темы.
-
-## Deployment
-
-Готовы конфигурации для:
-
-- Node static server;
-- Vercel (`vercel.json`);
-- Netlify (`netlify.toml`).
-
-Все SPA-маршруты должны возвращать `index.html`. `sw.js`, manifest и HTML нельзя кешировать как immutable; сервер в архиве уже применяет корректную стратегию.
-
-## Важное ограничение
-
-Архив содержит полностью работающий frontend и локальный текстовый сценарий. Полноценный AI-анализ фотографий, OCR, общедоступные share-ссылки и серверные напоминания требуют backend, реализующего документированный API-контракт.
+Vercel использует `vercel.json` и собирает `dist/`. Railway использует `back/railway.json`, применяет Prisma migrations перед запуском и проверяет `/api/ready`.

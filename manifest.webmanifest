@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "Фаҳмо AI",
-  "short_name": "Фаҳмо AI",
+  "name": "Fahmo AI",
+  "short_name": "Fahmo AI",
   "description": "Из документа — в понятный план",
   "lang": "ru",
   "dir": "ltr",
@@ -62,21 +62,6 @@
           "sizes": "192x192"
         }
       ]
-    }
-  ],
-  "screenshots": [
-    {
-      "src": "/public/screenshots/desktop-home.png",
-      "sizes": "1440x1100",
-      "type": "image/png",
-      "form_factor": "wide",
-      "label": "Главная страница Фаҳмо AI на компьютере"
-    },
-    {
-      "src": "/public/screenshots/mobile-home.png",
-      "sizes": "390x844",
-      "type": "image/png",
-      "label": "Главная страница Фаҳмо AI на смартфоне"
     }
   ]
 }

@@ -1,0 +1,40 @@
+{
+  "name": "fahmo-ai",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=22 <25"
+  },
+  "scripts": {
+    "postinstall": "prisma generate",
+    "prisma:validate": "prisma validate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:generate": "prisma generate",
+    "prisma:deploy": "prisma migrate deploy",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit",
+    "build": "npm run typecheck && npm run prisma:generate",
+    "schemas:export": "tsx scripts/export-schemas.ts",
+    "test": "node --import tsx --test tests/unit/*.test.ts",
+    "start": "node --import tsx src/server.ts",
+    "dev": "node --import tsx --watch src/server.ts",
+    "worker": "node --import tsx src/worker.ts",
+    "smoke:http": "tsx scripts/smoke-http.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.2",
+    "prisma": "^7.0.0",
+    "typescript": "^5.7.0"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.0.0",
+    "@prisma/client": "^7.0.0",
+    "dotenv": "^17.4.2",
+    "fontkit": "^2.0.4",
+    "pdf-lib": "^1.17.1",
+    "pg": "^8.13.0",
+    "sharp": "^0.35.3",
+    "tsx": "^4.19.0",
+    "zod": "^4.4.3"
+  }
+}

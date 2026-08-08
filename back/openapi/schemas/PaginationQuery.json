@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "cursor": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "limit": {
+      "default": 20,
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 50
+    },
+    "sort": {
+      "default": "created_at_desc",
+      "type": "string",
+      "enum": [
+        "created_at_desc",
+        "created_at_asc",
+        "updated_at_desc",
+        "updated_at_asc"
+      ]
+    }
+  },
+  "required": [
+    "limit",
+    "sort"
+  ],
+  "additionalProperties": false
+}

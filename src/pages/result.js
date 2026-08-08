@@ -1,10 +1,11 @@
-import { createRemoteShare, revokeRemoteShare } from '../core/api.js';
+import { answerRemoteClarification, completeRemoteTask, createRemoteExport, createRemoteReminder, createRemoteShare, downloadRemoteExport, getRemoteExport, patchRemoteTask, revokeRemoteShare } from '../core/api.js';
 import { getLanguage, t } from '../core/i18n.js';
 import { deleteShare, getAnalysis, saveAnalysis, saveDraft, saveShare } from '../core/repository.js';
 import { navigate } from '../core/router.js';
 import { getSettings } from '../core/settings.js';
-import { copyText, downloadBlob, escapeAttribute, escapeHtml, formatDate, uid } from '../core/utils.js';
+import { copyText, downloadBlob, escapeAttribute, escapeHtml, formatDate, uid, wait } from '../core/utils.js';
 import { createResultPdf, downloadTaskCalendar } from '../domain/exporters.js';
+import { normalizeRemoteResult } from './process.js';
 import { confirmDialog, openDialog } from '../ui/dialogs.js';
 import { icon } from '../ui/icons.js';
 import { renderShell } from '../ui/shell.js';
@@ -91,7 +92,7 @@ function clarificationCard(item) {
 function actionMenu() {
   return `
     <section class="card card--padded">
-      <div class="card__header"><div><h2 class="card__title">${escapeHtml(t('save'))}</h2><p class="card__description">${escapeHtml(t('createdLocally'))}</p></div><span class="save-status" data-save-status>${icon('check', { size: 15 })}${escapeHtml(t('saved'))}</span></div>
+      <div class="card__header"><div><h2 class="card__title">${escapeHtml(t('save'))}</h2><p class="card__description">${escapeHtml(isRemoteAnalysis() ? t('remoteProvider') : t('createdLocally'))}</p></div><span class="save-status" data-save-status>${icon('check', { size: 15 })}${escapeHtml(t('saved'))}</span></div>
       <div class="action-menu">
         <button class="button button--secondary" type="button" data-copy-all>${icon('copy')} ${escapeHtml(t('copyAll'))}</button>
         <button class="button button--secondary" type="button" data-download-pdf>${icon('download')} ${escapeHtml(t('downloadPdf'))}</button>
@@ -175,13 +176,21 @@ async function toggleTask(taskId) {
   const task = analysis.result.tasks.find((item) => item.id === taskId);
   if (!task) return;
   const previous = task.completed;
-  task.completed = !previous;
-  render();
-  try { await persist(); }
-  catch {
+  try {
+    if (isRemoteAnalysis()) {
+      const response = previous
+        ? await patchRemoteTask(getSettings().apiBaseUrl, task.id, task.revision ?? 1, { status: 'pending' })
+        : await completeRemoteTask(getSettings().apiBaseUrl, task.id, task.revision ?? 1);
+      applyRemoteTask(task, response);
+    } else {
+      task.completed = !previous;
+    }
+    await persist();
+    render();
+  } catch (error) {
     task.completed = previous;
     render();
-    showToast({ title: t('saveFailed'), type: 'error' });
+    showToast({ title: t('saveFailed'), message: error.message, type: 'error' });
   }
 }
 
@@ -212,20 +221,55 @@ function editTask(taskId) {
         const form = dialog.querySelector('[data-task-form]');
         if (!form.reportValidity()) return;
         const values = Object.fromEntries(new FormData(form));
-        Object.assign(task, {
+        const patch = {
           title: values.title.trim(),
           simpleTitle: values.title.trim(),
-          description: values.description.trim(),
+          description: values.description.trim() || null,
           priority: values.priority,
           dueDate: values.dueDate.trim() || null,
           dueTime: values.dueTime || null,
           location: values.location.trim() || null,
           reminderMinutes: values.reminderMinutes ? Number(values.reminderMinutes) : null,
           userEdited: true
-        });
-        await persist();
-        dialog.close('saved');
-        render();
+        };
+        const saveButton = dialog.querySelector('[data-save-task]');
+        saveButton.disabled = true;
+        try {
+          if (isRemoteAnalysis()) {
+            const dueAt = toDueAt(patch.dueDate, patch.dueTime);
+            const response = await patchRemoteTask(getSettings().apiBaseUrl, task.id, task.revision ?? 1, {
+              title: patch.title,
+              simpleTitle: patch.simpleTitle,
+              description: patch.description,
+              priority: patch.priority,
+              dueAt,
+              timezone: dueAt ? Intl.DateTimeFormat().resolvedOptions().timeZone : null,
+            });
+            applyRemoteTask(task, response);
+            task.location = patch.location;
+            task.reminderMinutes = patch.reminderMinutes;
+            if (patch.reminderMinutes && dueAt) {
+              const scheduledAt = new Date(new Date(dueAt).getTime() - patch.reminderMinutes * 60_000);
+              if (scheduledAt.getTime() > Date.now()) {
+                await createRemoteReminder(getSettings().apiBaseUrl, task.id, {
+                  scheduledAt: scheduledAt.toISOString(),
+                  timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                  channel: 'in_app',
+                  idempotencyKey: `reminder.${task.id}.${scheduledAt.getTime()}`,
+                });
+              }
+            }
+          } else {
+            Object.assign(task, patch);
+          }
+          task.userEdited = true;
+          await persist();
+          dialog.close('saved');
+          render();
+        } catch (error) {
+          saveButton.disabled = false;
+          showToast({ title: t('saveFailed'), message: error.message, type: 'error' });
+        }
       });
     }
   });
@@ -279,6 +323,20 @@ async function submitClarification(card) {
   const clarification = analysis.result.clarifications.find((item) => item.id === id);
   const year = Number(card.querySelector('[data-clarification-answer]').value);
   if (!clarification || year < 1900 || year > 2200) return;
+  if (isRemoteAnalysis()) {
+    try {
+      const response = await answerRemoteClarification(getSettings().apiBaseUrl, analysis.remoteId, clarification.id, String(year));
+      analysis.result = normalizeRemoteResult(response, analysis);
+      analysis.status = 'completed';
+      analysis.completedAt = new Date().toISOString();
+      await persist();
+      render();
+      return;
+    } catch (error) {
+      showToast({ title: t('errorTitle'), message: error.message, type: 'error' });
+      return;
+    }
+  }
   clarification.answered = true;
   clarification.answer = year;
   const data = analysis.result.importantData.find((item) => item.id === clarification.targetDataId);
@@ -295,9 +353,11 @@ async function downloadPdf() {
   const button = document.querySelector('[data-download-pdf]');
   button.disabled = true;
   try {
-    const blob = await createResultPdf(analysis.result, {
-      locale: getLanguage(), analyzedLabel: t('analyzed'), summaryLabel: t('summary'), tasksLabel: t('tasks'), dataLabel: t('importantData'), warningsLabel: t('warnings'), dueLabel: t('dueDate'), priorityLabel: t('priority')
-    });
+    const blob = isRemoteAnalysis()
+      ? await createAndDownloadRemoteExport('pdf', { analysisId: analysis.remoteId })
+      : await createResultPdf(analysis.result, {
+        locale: getLanguage(), analyzedLabel: t('analyzed'), summaryLabel: t('summary'), tasksLabel: t('tasks'), dataLabel: t('importantData'), warningsLabel: t('warnings'), dueLabel: t('dueDate'), priorityLabel: t('priority')
+      });
     const filename = `${(analysis.result.title || 'fahmo-result').replace(/[\\/:*?"<>|]+/g, '-').slice(0, 80)}.pdf`;
     downloadBlob(blob, filename);
     showToast({ title: t('pdfCreated'), type: 'success' });
@@ -317,10 +377,16 @@ function calendarDialog() {
     title: t('addCalendar'),
     body: `<div class="action-sheet-list">${tasks.map((task) => `<button class="action-sheet-item" type="button" data-calendar-task="${escapeAttribute(task.id)}">${icon('calendar')}<span><strong>${escapeHtml(task.title)}</strong><span>${escapeHtml(task.dueDate)}</span></span></button>`).join('')}</div>`,
     onOpen(dialog) {
-      dialog.querySelectorAll('[data-calendar-task]').forEach((button) => button.addEventListener('click', () => {
+      dialog.querySelectorAll('[data-calendar-task]').forEach((button) => button.addEventListener('click', async () => {
         const task = tasks.find((item) => item.id === button.dataset.calendarTask);
         try {
-          downloadTaskCalendar(task, `${task.title.replace(/[\\/:*?"<>|]+/g, '-').slice(0, 70)}.ics`);
+          const filename = `${task.title.replace(/[\\/:*?"<>|]+/g, '-').slice(0, 70)}.ics`;
+          if (isRemoteAnalysis()) {
+            const blob = await createAndDownloadRemoteExport('ics', { taskIds: [task.id] });
+            downloadBlob(blob, filename);
+          } else {
+            downloadTaskCalendar(task, filename);
+          }
           dialog.close('created');
           showToast({ title: t('calendarCreated'), type: 'success' });
         } catch (error) {
@@ -329,6 +395,39 @@ function calendarDialog() {
       }));
     }
   });
+}
+
+function isRemoteAnalysis() {
+  return analysis.settings?.provider === 'remote' && Boolean(analysis.remoteId && getSettings().apiBaseUrl);
+}
+
+function applyRemoteTask(task, response) {
+  task.title = response.title ?? task.title;
+  task.simpleTitle = response.simpleTitle ?? task.simpleTitle ?? task.title;
+  task.description = response.description ?? '';
+  task.priority = response.priority ?? task.priority;
+  task.completed = response.completed ?? response.status === 'completed';
+  task.dueDate = response.dueDate ?? response.dueAt?.slice(0, 10) ?? null;
+  task.dueTime = response.dueTime ?? response.dueAt?.slice(11, 16) ?? null;
+  task.revision = Number.isInteger(response.revision) ? response.revision : task.revision;
+}
+
+function toDueAt(dueDate, dueTime) {
+  if (!dueDate) return null;
+  const value = new Date(`${dueDate}T${dueTime || '00:00'}:00`);
+  return Number.isNaN(value.getTime()) ? null : value.toISOString();
+}
+
+async function createAndDownloadRemoteExport(kind, input) {
+  const baseUrl = getSettings().apiBaseUrl;
+  const created = await createRemoteExport(baseUrl, { kind, ...input });
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    const job = attempt === 0 ? created : await getRemoteExport(baseUrl, created.id);
+    if (job.status === 'done') return downloadRemoteExport(baseUrl, job.id);
+    if (job.status === 'failed') throw new Error(job.errorCode || t('genericError'));
+    await wait(700);
+  }
+  throw new Error(t('genericError'));
 }
 
 async function shareResult() {

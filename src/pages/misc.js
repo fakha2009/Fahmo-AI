@@ -1,5 +1,7 @@
 import { getShare } from '../core/repository.js';
+import { getRemotePublicShare } from '../core/api.js';
 import { t } from '../core/i18n.js';
+import { getSettings } from '../core/settings.js';
 import { escapeHtml } from '../core/utils.js';
 import { icon } from '../ui/icons.js';
 import { renderShell } from '../ui/shell.js';
@@ -35,7 +37,10 @@ export async function installPage() {
 }
 
 export async function sharedPage({ params }) {
-  const share = await getShare(params.shareId);
+  let share = await getShare(params.shareId);
+  if (!share?.result && getSettings().apiBaseUrl) {
+    share = await getRemotePublicShare(getSettings().apiBaseUrl, params.shareId).catch(() => null);
+  }
   if (!share?.result) return notFoundPage();
   const result = share.result;
   renderShell({

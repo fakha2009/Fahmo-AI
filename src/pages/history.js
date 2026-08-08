@@ -1,6 +1,8 @@
 import { getLanguage, t } from '../core/i18n.js';
+import { deleteRemoteAnalysis } from '../core/api.js';
 import { deleteAnalysis, listAnalyses, saveAnalysis } from '../core/repository.js';
 import { navigate } from '../core/router.js';
+import { getSettings } from '../core/settings.js';
 import { escapeAttribute, escapeHtml, formatDate } from '../core/utils.js';
 import { confirmDialog, openDialog } from '../ui/dialogs.js';
 import { icon } from '../ui/icons.js';
@@ -115,6 +117,15 @@ function renameAnalysis(id) {
 async function removeAnalysis(id) {
   const confirmed = await confirmDialog({ title: t('confirmDelete'), message: t('confirmDeleteText'), confirmLabel: t('delete'), cancelLabel: t('cancel'), danger: true });
   if (!confirmed) return;
+  const item = analyses.find((entry) => entry.id === id);
+  if (item?.remoteId && getSettings().apiBaseUrl) {
+    try {
+      await deleteRemoteAnalysis(getSettings().apiBaseUrl, item.remoteId);
+    } catch (error) {
+      showToast({ title: t('errorTitle'), message: error.message, type: 'error' });
+      return;
+    }
+  }
   await deleteAnalysis(id);
   analyses = analyses.filter((item) => item.id !== id);
   render();

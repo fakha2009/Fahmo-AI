@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "interfaceLanguage": {
+      "type": "string",
+      "enum": [
+        "ru",
+        "tg",
+        "en"
+      ]
+    },
+    "outputLanguage": {
+      "type": "string",
+      "enum": [
+        "ru",
+        "tg",
+        "en"
+      ]
+    },
+    "explanationMode": {
+      "type": "string",
+      "enum": [
+        "standard",
+        "simple"
+      ]
+    },
+    "theme": {
+      "type": "string",
+      "enum": [
+        "system",
+        "light",
+        "dark"
+      ]
+    },
+    "reducedMotion": {
+      "type": "boolean"
+    },
+    "textScale": {
+      "type": "string",
+      "enum": [
+        "normal",
+        "large"
+      ]
+    },
+    "timezone": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "preferredProvider": {
+      "anyOf": [
+        {
+          "type": "string",
+          "maxLength": 64
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "saveHistory": {
+      "type": "boolean"
+    },
+    "sourcePreviewMode": {
+      "type": "string",
+      "enum": [
+        "history",
+        "temporary",
+        "no_preview"
+      ]
+    },
+    "defaultReminderOffsetMinutes": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 525600
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "pushEnabled": {
+      "type": "boolean"
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+    }
+  },
+  "required": [
+    "interfaceLanguage",
+    "outputLanguage",
+    "explanationMode",
+    "theme",
+    "reducedMotion",
+    "textScale",
+    "timezone",
+    "preferredProvider",
+    "saveHistory",
+    "sourcePreviewMode",
+    "defaultReminderOffsetMinutes",
+    "pushEnabled",
+    "revision",
+    "updatedAt"
+  ],
+  "additionalProperties": false
+}

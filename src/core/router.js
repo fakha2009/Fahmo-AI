@@ -35,7 +35,7 @@ export async function renderRoute() {
     const params = Object.fromEntries(route.keys.map((key, index) => [key, decodeURIComponent(match[index + 1])]));
     const result = await route.loader({ params, search: new URLSearchParams(location.search), path });
     cleanup = typeof result === 'function' ? result : result?.cleanup ?? null;
-    if (result?.title) document.title = `${result.title} — Фаҳмо AI`;
+    if (result?.title) document.title = `${result.title} — Fahmo AI`;
     return;
   }
   const fallback = routes.find((route) => route.expression.test('/not-found'));

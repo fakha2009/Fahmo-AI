@@ -28,16 +28,12 @@ export function renderShell({ title = '', content = '', actions = '', currentPat
           ${navItem('/history', t('navHistory'), 'history', currentPath)}
           ${navItem('/settings', t('navSettings'), 'settings', currentPath)}
         </nav>
-        <div class="sidebar__footer">PWA · Local-first · v${escapeHtml(globalThis.__FAHMO_CONFIG__?.appVersion ?? '1.1.0')}</div>
+        <div class="sidebar__footer">${escapeHtml(t('tagline'))}</div>
       </aside>
       <main class="app-main">
         <header class="topbar">
           <div class="topbar__title">${escapeHtml(title || t('appName'))}</div>
           <div class="topbar__actions">
-            <div class="connection-badge" data-connection data-online="${navigator.onLine}">
-              <span class="connection-dot" aria-hidden="true"></span>
-              <span data-connection-text>${escapeHtml(navigator.onLine ? t('online') : t('offline'))}</span>
-            </div>
             ${actions}
           </div>
         </header>
@@ -50,16 +46,5 @@ export function renderShell({ title = '', content = '', actions = '', currentPat
       </nav>
     </div>
   `;
-  updateConnection();
   document.getElementById('main-content')?.focus({ preventScroll: true });
 }
-
-export function updateConnection() {
-  const badge = document.querySelector('[data-connection]');
-  const text = document.querySelector('[data-connection-text]');
-  if (badge) badge.dataset.online = String(navigator.onLine);
-  if (text) text.textContent = navigator.onLine ? t('online') : t('offline');
-}
-
-addEventListener('online', updateConnection);
-addEventListener('offline', updateConnection);

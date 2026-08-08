@@ -2,7 +2,6 @@ import { t, getLanguage } from '../core/i18n.js';
 import { saveDraft, listAnalyses } from '../core/repository.js';
 import { navigate } from '../core/router.js';
 import { escapeHtml, formatDate, uid } from '../core/utils.js';
-import { openDialog } from '../ui/dialogs.js';
 import { icon } from '../ui/icons.js';
 import { renderShell } from '../ui/shell.js';
 
@@ -66,27 +65,6 @@ async function createExample() {
   navigate('/analyze?mode=text');
 }
 
-function openAddMenu() {
-  openDialog({
-    id: 'add-document-dialog',
-    title: t('addDocument'),
-    body: `
-      <div class="action-sheet-list">
-        <button class="action-sheet-item" type="button" data-mode="camera">${icon('camera')}<span><strong>${escapeHtml(t('takePhoto'))}</strong><span>Android / iPhone</span></span></button>
-        <button class="action-sheet-item" type="button" data-mode="files">${icon('upload')}<span><strong>${escapeHtml(t('chooseFile'))}</strong><span>PDF, PNG, JPG, WEBP, TXT</span></span></button>
-        <button class="action-sheet-item" type="button" data-mode="paste">${icon('clipboard')}<span><strong>${escapeHtml(t('pasteImage'))}</strong><span>Ctrl+V / Cmd+V</span></span></button>
-        <button class="action-sheet-item" type="button" data-mode="text">${icon('text')}<span><strong>${escapeHtml(t('pasteText'))}</strong><span>${escapeHtml(t('sourceText'))}</span></span></button>
-      </div>`,
-    onOpen(dialog) {
-      dialog.querySelectorAll('[data-mode]').forEach((button) => button.addEventListener('click', () => {
-        const mode = button.dataset.mode;
-        dialog.close();
-        navigate(`/analyze?mode=${encodeURIComponent(mode)}`);
-      }));
-    }
-  });
-}
-
 export async function homePage() {
   const analyses = (await listAnalyses()).slice(0, 3);
   renderShell({
@@ -128,7 +106,7 @@ export async function homePage() {
       </section>`
   });
 
-  document.querySelectorAll('[data-add]').forEach((button) => button.addEventListener('click', openAddMenu));
+  document.querySelectorAll('[data-add]').forEach((button) => button.addEventListener('click', () => navigate('/analyze')));
   document.querySelectorAll('[data-example]').forEach((button) => button.addEventListener('click', createExample));
   return { title: t('navHome') };
 }

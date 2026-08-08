@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": false,
+    "noEmit": true,
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable", "WebWorker"],
+    "skipLibCheck": true,
+    "types": ["node"]
+  },
+  "include": ["config.js", "server.mjs", "scripts/**/*.mjs", "src/**/*.js", "sw.js", "tests/**/*.mjs"],
+  "exclude": ["back", "dist", "node_modules"]
+}

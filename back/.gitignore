@@ -1,0 +1,37 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Environment / secrets (ТЗ §16.1)
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Build
+.next/
+out/
+dist/
+build/
+
+# Tests / coverage
+coverage/
+
+# Prisma
+prisma/*.db
+
+# Runtime data (локальное хранилище файлов: exports/staging/previews)
+data/
+
+# Logs
+*.log
+npm-debug.log*
+tmp-*.txt
+tmp-*.js
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

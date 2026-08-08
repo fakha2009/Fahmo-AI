@@ -92,7 +92,7 @@ const server = createServer((request, response) => {
     'Permissions-Policy': 'camera=(self), microphone=(), geolocation=(), payment=()',
     'Cross-Origin-Opener-Policy': 'same-origin',
     'Cross-Origin-Resource-Policy': 'same-origin',
-    'Content-Security-Policy': "default-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self' https:; script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src 'self' blob:; worker-src 'self' blob:; manifest-src 'self'",
+    'Content-Security-Policy': "default-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self' https: http://localhost:8787 http://127.0.0.1:8787; script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src 'self' blob:; worker-src 'self' blob:; manifest-src 'self'",
     'Cache-Control': cacheControlFor(filePath)
   };
 

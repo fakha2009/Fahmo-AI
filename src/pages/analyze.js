@@ -1,10 +1,10 @@
-import { getSettings } from '../core/settings.js';
+import { getSettings, isApiConfigurationLocked } from '../core/settings.js';
 import { t } from '../core/i18n.js';
 import { deleteDraft, getDraft, saveAnalysis, saveDraft } from '../core/repository.js';
 import { navigate } from '../core/router.js';
 import { clamp, debounce, escapeAttribute, escapeHtml, formatBytes, uid } from '../core/utils.js';
 import { estimatePdfPageCount } from '../domain/document-reader.js';
-import { MAX_PAGES, validateFile, validatePageLimit, validateText } from '../domain/validators.js';
+import { MAX_PAGES, MAX_TEXT_LENGTH, validateFile, validatePageLimit, validateText } from '../domain/validators.js';
 import { openDialog } from '../ui/dialogs.js';
 import { icon } from '../ui/icons.js';
 import { renderShell } from '../ui/shell.js';
@@ -141,13 +141,13 @@ function settingsPanel() {
           </select>
         </div>
       </section>
-      <section class="card settings-card">
+      ${isApiConfigurationLocked() ? '' : `<section class="card settings-card">
         <h3>${escapeHtml(t('provider'))}</h3>
         <div class="option-list">
           <label class="radio-option"><input type="radio" name="provider" value="local" ${settings.provider === 'local' ? 'checked' : ''}><span><strong>${escapeHtml(t('localProvider'))}</strong><span>${escapeHtml(t('localProviderDesc'))}</span></span></label>
-          <label class="radio-option"><input type="radio" name="provider" value="remote" ${settings.provider === 'remote' ? 'checked' : ''}><span><strong>${escapeHtml(t('remoteProvider'))}</strong><span>${escapeHtml(getSettings().apiBaseUrl || t('apiUrlHint'))}</span></span></label>
+          <label class="radio-option"><input type="radio" name="provider" value="remote" ${settings.provider === 'remote' ? 'checked' : ''}><span><strong>${escapeHtml(t('remoteProvider'))}</strong><span>${escapeHtml(t('remoteProviderDesc'))}</span></span></label>
         </div>
-      </section>
+      </section>`}
       <div class="analyze-submit">
         <button class="button button--primary button--wide" type="button" data-create-plan>${icon('sparkles')} ${escapeHtml(t('createPlan'))}</button>
       </div>
@@ -160,8 +160,8 @@ function sourceContent() {
       <div class="text-source">
         <div class="field">
           <label for="document-text">${escapeHtml(t('pasteText'))}</label>
-          <textarea id="document-text" class="textarea" maxlength="120000" placeholder="${escapeAttribute(t('textPlaceholder'))}">${escapeHtml(draft.text ?? '')}</textarea>
-          <div class="field-hint"><span data-character-count>${(draft.text ?? '').length}</span> / 120000 ${escapeHtml(t('characters'))}</div>
+          <textarea id="document-text" class="textarea" maxlength="${MAX_TEXT_LENGTH}" placeholder="${escapeAttribute(t('textPlaceholder'))}">${escapeHtml(draft.text ?? '')}</textarea>
+          <div class="field-hint"><span data-character-count>${(draft.text ?? '').length}</span> / ${MAX_TEXT_LENGTH} ${escapeHtml(t('characters'))}</div>
         </div>
         <div><button class="button button--ghost button--small" type="button" data-clear-text>${icon('trash')} ${escapeHtml(t('clear'))}</button></div>
       </div>`;

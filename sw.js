@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'fahmo-ai-v1.1.0';
+const CACHE_VERSION = 'fahmo-ai-v1.2.0';
 const APP_SHELL = [
   '/',
   '/index.html',
@@ -60,6 +60,11 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
+  const cacheResponse = (requestToCache, response) => {
+    const clone = response.clone();
+    return caches.open(CACHE_VERSION).then((cache) => cache.put(requestToCache, clone));
+  };
+
   // API responses can contain private document data and must never be stored in Cache Storage.
   if (url.pathname.startsWith('/v1/') || url.pathname.startsWith('/api/')) {
     event.respondWith(fetch(request));
@@ -70,7 +75,9 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          if (response.ok) caches.open(CACHE_VERSION).then((cache) => cache.put('/index.html', response.clone()));
+          if (response.ok) {
+            event.waitUntil(cacheResponse('/index.html', response));
+          }
           return response;
         })
         .catch(async () => (await caches.match('/index.html')) ?? Response.error())
@@ -83,7 +90,7 @@ self.addEventListener('fetch', (event) => {
       const network = fetch(request)
         .then((response) => {
           if (response.ok && response.type === 'basic') {
-            caches.open(CACHE_VERSION).then((cache) => cache.put(request, response.clone()));
+            event.waitUntil(cacheResponse(request, response));
           }
           return response;
         })

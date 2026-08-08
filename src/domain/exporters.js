@@ -212,7 +212,7 @@ export async function createResultPdf(result, options = {}) {
   };
 
   newPage();
-  await drawText('Фаҳмо AI', { size: 28, weight: 700, color: '#6746f5', after: 18 });
+  await drawText('Fahmo AI', { size: 28, weight: 700, color: '#6746f5', after: 18 });
   await drawText(result.title || 'Результат анализа', { size: 54, weight: 750, lineHeight: 66, after: 14 });
   await drawText(`${options.analyzedLabel ?? 'Проанализировано'}: ${formatShortDate(result.createdAt, options.locale ?? 'ru')}`, { size: 24, color: '#62647b', after: 30 });
   await drawRule();
@@ -245,7 +245,7 @@ export async function createResultPdf(result, options = {}) {
   }
 
   await drawRule();
-  await drawText(options.footer ?? 'Создано в Фаҳмо AI. Пользовательские исправления отмечаются в приложении.', { size: 20, color: '#85879c' });
+  await drawText(options.footer ?? 'Создано в Fahmo AI. Пользовательские исправления отмечаются в приложении.', { size: 20, color: '#85879c' });
   await flushPage();
   return buildPdfFromJpegs(pages);
 }
