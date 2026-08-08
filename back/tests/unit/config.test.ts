@@ -20,7 +20,7 @@ test("Config: валидное окружение парсится", () => {
   assert.equal(config.APP_URL, "http://localhost:3000");
   assert.equal(config.LOG_LEVEL, "info");
   assert.equal(config.MAX_UPLOAD_BYTES, 10 * 1024 * 1024);
-  assert.equal(config.MAX_PDF_PAGES, 10);
+  assert.equal(config.MAX_PDF_PAGES, 20);
   assert.equal(config.ANONYMOUS_SESSION_TTL_DAYS, 30);
 });
 

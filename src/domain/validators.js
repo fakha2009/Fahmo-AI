@@ -1,5 +1,5 @@
 export const MAX_FILE_SIZE = 10 * 1024 * 1024;
-export const MAX_PAGES = 10;
+export const MAX_PAGES = 20;
 export const MAX_TEXT_LENGTH = 50_000;
 export const ACCEPTED_TYPES = new Set([
   'application/pdf',

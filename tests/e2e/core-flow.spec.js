@@ -112,7 +112,12 @@ test('tasks can be created, edited, completed, and restored on this device', asy
   await editDialog.getByLabel('Название').fill('Подготовить финальную презентацию');
   await editDialog.getByRole('button', { name: 'Сохранить изменения' }).click();
   await expect(page.getByText('Подготовить финальную презентацию', { exact: true })).toBeVisible();
-  await page.locator('[data-task-id]').filter({ hasText: 'Подготовить финальную презентацию' }).getByRole('checkbox').click();
+  await page.getByRole('button', { name: 'Все', exact: true }).click();
+  const completion = page.locator('[data-task-id]').filter({ hasText: 'Подготовить финальную презентацию' }).getByRole('checkbox');
+  await expect(completion.locator('svg')).toHaveCount(1);
+  await completion.click();
+  await expect(completion).toHaveAttribute('aria-checked', 'true');
+  await expect(completion.locator('svg')).toHaveCount(1);
   await page.getByRole('button', { name: 'Выполненные', exact: true }).click();
   await expect(page.getByText('Подготовить финальную презентацию', { exact: true })).toBeVisible();
   await page.reload();

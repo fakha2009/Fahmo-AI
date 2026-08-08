@@ -68,8 +68,8 @@ export const EnvSchema = z
 
     // Лимиты
     MAX_UPLOAD_BYTES: IntPositiveSchema.default(10 * 1024 * 1024),
-    MAX_PDF_PAGES: IntPositiveSchema.default(10),
-    MAX_IMAGE_COUNT: IntPositiveSchema.default(10),
+    MAX_PDF_PAGES: IntPositiveSchema.default(20),
+    MAX_IMAGE_COUNT: IntPositiveSchema.default(20),
     MAX_TEXT_LENGTH: IntPositiveSchema.default(50000),
 
     // Сессии и сроки

@@ -114,10 +114,11 @@ function reminderBadge(task) {
 
 function taskRow(task) {
   const disabled = busyIds.has(task.id);
+  const completed = isCompleted(task);
   const originLabel = task.origin === 'ai' ? t('taskOriginAi') : t('taskOriginUser');
   return `
-    <article class="task-item tasks-page__item" data-task-id="${escapeAttribute(task.id)}" data-completed="${isCompleted(task)}">
-      <button class="task-check" type="button" role="checkbox" aria-checked="${isCompleted(task)}" aria-label="${escapeAttribute(isCompleted(task) ? t('completed') : t('notCompleted'))}" data-task-toggle ${disabled ? 'disabled' : ''}>${isCompleted(task) ? icon('check', { size: 17 }) : ''}</button>
+    <article class="task-item tasks-page__item" data-task-id="${escapeAttribute(task.id)}" data-completed="${completed}" data-busy="${disabled}">
+      <button class="task-check" type="button" role="checkbox" aria-checked="${completed}" aria-busy="${disabled}" aria-label="${escapeAttribute(completed ? t('completed') : t('notCompleted'))}" data-task-toggle ${disabled ? 'disabled' : ''}><span class="task-check__mark" aria-hidden="true">${icon('check', { size: 18 })}</span></button>
       <div class="task-item__body">
         <div class="task-item__heading">
           <h2 class="task-item__title">${escapeHtml(task.title)}</h2>
@@ -151,16 +152,18 @@ function render() {
         <div class="page-actions"><button class="button button--primary" type="button" data-add-task>${icon('plus')} ${escapeHtml(t('addTask'))}</button></div>
       </header>
       ${loadError ? `<div class="inline-alert" role="alert">${icon('alert')}<div><strong>${escapeHtml(t('errorTitle'))}</strong><p>${escapeHtml(loadError)}</p></div><button class="button button--small button--secondary" type="button" data-retry>${escapeHtml(t('retry'))}</button></div>` : ''}
-      <div class="tasks-summary" aria-label="${escapeAttribute(t('tasksTitle'))}">
-        <div><strong>${tasks.length}</strong><span>${escapeHtml(t('allTasks'))}</span></div>
-        <div><strong>${openCount}</strong><span>${escapeHtml(t('openTasks'))}</span></div>
-        <div><strong>${completedCount}</strong><span>${escapeHtml(t('completedTasks'))}</span></div>
-      </div>
-      <div class="filters tasks-filters" role="group" aria-label="${escapeAttribute(t('tasksTitle'))}">
-        <button class="filter-chip" type="button" data-task-filter="all" aria-pressed="${filter === 'all'}">${escapeHtml(t('allTasks'))}</button>
-        <button class="filter-chip" type="button" data-task-filter="open" aria-pressed="${filter === 'open'}">${escapeHtml(t('openTasks'))}</button>
-        <button class="filter-chip" type="button" data-task-filter="completed" aria-pressed="${filter === 'completed'}">${escapeHtml(t('completedTasks'))}</button>
-      </div>
+      <section class="tasks-command-bar" aria-label="${escapeAttribute(t('tasksTitle'))}">
+        <div class="tasks-summary">
+          <div><strong>${tasks.length}</strong><span>${escapeHtml(t('allTasks'))}</span></div>
+          <div><strong>${openCount}</strong><span>${escapeHtml(t('openTasks'))}</span></div>
+          <div><strong>${completedCount}</strong><span>${escapeHtml(t('completedTasks'))}</span></div>
+        </div>
+        <div class="filters tasks-filters" role="group" aria-label="${escapeAttribute(t('tasksTitle'))}">
+          <button class="filter-chip" type="button" data-task-filter="all" aria-pressed="${filter === 'all'}">${escapeHtml(t('allTasks'))}</button>
+          <button class="filter-chip" type="button" data-task-filter="open" aria-pressed="${filter === 'open'}">${escapeHtml(t('openTasks'))}</button>
+          <button class="filter-chip" type="button" data-task-filter="completed" aria-pressed="${filter === 'completed'}">${escapeHtml(t('completedTasks'))}</button>
+        </div>
+      </section>
       <section class="section tasks-page__list" aria-live="polite">
         ${visible.length ? `<div class="task-list">${visible.map(taskRow).join('')}</div>` : `<div class="card empty-state tasks-empty"><div class="tasks-empty__icon">${icon('tasks', { size: 36 })}</div><h3>${escapeHtml(t('noTaskItems'))}</h3><p>${escapeHtml(t('noTaskItemsText'))}</p><button class="button button--primary" type="button" data-add-task>${icon('plus')} ${escapeHtml(t('addTask'))}</button></div>`}
       </section>`,
@@ -337,21 +340,26 @@ async function updateTask(task, input) {
 }
 
 async function toggleTask(task) {
+  if (busyIds.has(task.id)) return;
+  const wasCompleted = isCompleted(task);
+  const nextCompleted = !wasCompleted;
   setBusy(task.id, true);
+  setTaskVisualState(task.id, nextCompleted);
   try {
     let updated;
     if (isRemote()) {
-      const response = isCompleted(task)
+      const response = wasCompleted
         ? await patchRemoteTask(getSettings().apiBaseUrl, task.id, task.revision, { status: 'pending' })
         : await completeRemoteTask(getSettings().apiBaseUrl, task.id, task.revision);
       updated = normalizeTask({ ...response, reminders: task.reminders, origin: task.origin });
     } else {
-      updated = normalizeTask({ ...task, status: isCompleted(task) ? 'pending' : 'completed', completed: !isCompleted(task), revision: task.revision + 1, completedAt: isCompleted(task) ? null : new Date().toISOString() });
+      updated = normalizeTask({ ...task, status: wasCompleted ? 'pending' : 'completed', completed: nextCompleted, revision: task.revision + 1, completedAt: wasCompleted ? null : new Date().toISOString() });
     }
     await saveLocalTask({ ...updated, syncState: isRemote() ? 'synced' : undefined });
     await syncTaskIntoAnalysis(updated);
     tasks = sortTasks(tasks.map((item) => item.id === task.id ? updated : item));
   } catch (error) {
+    setTaskVisualState(task.id, wasCompleted);
     showToast({ title: t('errorTitle'), message: error.message || t('genericError'), type: 'error' });
   } finally {
     setBusy(task.id, false);
@@ -386,7 +394,23 @@ function activeReminder(task) {
 function setBusy(id, value) {
   if (value) busyIds.add(id);
   else busyIds.delete(id);
-  render();
+  const row = document.querySelector(`[data-task-id="${CSS.escape(id)}"]`);
+  const button = row?.querySelector('[data-task-toggle]');
+  if (row) row.dataset.busy = String(value);
+  if (button) {
+    button.disabled = value;
+    button.setAttribute('aria-busy', String(value));
+  }
+}
+
+function setTaskVisualState(id, completed) {
+  const row = document.querySelector(`[data-task-id="${CSS.escape(id)}"]`);
+  const button = row?.querySelector('[data-task-toggle]');
+  if (row) row.dataset.completed = String(completed);
+  if (button) {
+    button.setAttribute('aria-checked', String(completed));
+    button.setAttribute('aria-label', completed ? t('completed') : t('notCompleted'));
+  }
 }
 
 async function syncTaskIntoAnalysis(task) {

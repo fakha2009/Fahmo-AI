@@ -14,6 +14,7 @@ import { showToast } from '../ui/toast.js';
 let analysis;
 let mode = 'standard';
 const objectUrls = new Map();
+let busyTaskIds = new Set();
 
 function sourceById(id) { return analysis.sources?.find((source) => source.id === id); }
 function pageBySource(source) {
@@ -54,9 +55,10 @@ function summaryText(result) {
 
 function taskItem(task) {
   const title = mode === 'simple' ? (task.simpleTitle || task.title) : task.title;
+  const busy = busyTaskIds.has(task.id);
   return `
-    <article class="task-item" data-task-id="${escapeAttribute(task.id)}" data-completed="${Boolean(task.completed)}">
-      <button class="task-check" type="button" role="checkbox" aria-checked="${Boolean(task.completed)}" aria-label="${escapeAttribute(task.completed ? t('completed') : t('notCompleted'))}" data-toggle-task>${task.completed ? icon('check', { size: 17 }) : ''}</button>
+    <article class="task-item" data-task-id="${escapeAttribute(task.id)}" data-completed="${Boolean(task.completed)}" data-busy="${busy}">
+      <button class="task-check" type="button" role="checkbox" aria-checked="${Boolean(task.completed)}" aria-busy="${busy}" aria-label="${escapeAttribute(task.completed ? t('completed') : t('notCompleted'))}" data-toggle-task ${busy ? 'disabled' : ''}><span class="task-check__mark" aria-hidden="true">${icon('check', { size: 18 })}</span></button>
       <div>
         <h3 class="task-item__title">${escapeHtml(title)}</h3>
         ${task.description ? `<p class="task-item__description">${escapeHtml(task.description)}</p>` : ''}
@@ -184,8 +186,11 @@ function allAsText() {
 
 async function toggleTask(taskId) {
   const task = analysis.result.tasks.find((item) => item.id === taskId);
-  if (!task) return;
-  const previous = task.completed;
+  if (!task || busyTaskIds.has(taskId)) return;
+  const previous = Boolean(task.completed);
+  const next = !previous;
+  busyTaskIds.add(taskId);
+  setTaskVisualState(taskId, next, true);
   try {
     if (isRemoteAnalysis()) {
       const response = previous
@@ -193,14 +198,31 @@ async function toggleTask(taskId) {
         : await completeRemoteTask(getSettings().apiBaseUrl, task.id, task.revision ?? 1);
       applyRemoteTask(task, response);
     } else {
-      task.completed = !previous;
+      task.completed = next;
     }
     await persist();
-    render();
   } catch (error) {
     task.completed = previous;
-    render();
+    setTaskVisualState(taskId, previous, false);
     showToast({ title: t('saveFailed'), message: error.message, type: 'error' });
+  } finally {
+    busyTaskIds.delete(taskId);
+    render();
+  }
+}
+
+function setTaskVisualState(taskId, completed, busy) {
+  const row = document.querySelector(`[data-task-id="${CSS.escape(taskId)}"]`);
+  const button = row?.querySelector('[data-toggle-task]');
+  if (row) {
+    row.dataset.completed = String(completed);
+    row.dataset.busy = String(busy);
+  }
+  if (button) {
+    button.disabled = busy;
+    button.setAttribute('aria-busy', String(busy));
+    button.setAttribute('aria-checked', String(completed));
+    button.setAttribute('aria-label', completed ? t('completed') : t('notCompleted'));
   }
 }
 
@@ -601,6 +623,7 @@ function bindEvents() {
 }
 
 export async function resultPage({ params }) {
+  busyTaskIds = new Set();
   analysis = await getAnalysis(params.analysisId);
   if (!analysis) {
     renderShell({ title: t('errorTitle'), currentPath: location.pathname, content: `<div class="card empty-state"><h1>${escapeHtml(t('errorTitle'))}</h1><p>${escapeHtml(t('genericError'))}</p><a class="button button--primary" href="/history" data-router>${escapeHtml(t('navHistory'))}</a></div>` });

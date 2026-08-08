@@ -4,18 +4,51 @@ import { deleteDraft, getDraft, saveAnalysis, saveDraft } from '../core/reposito
 import { navigate } from '../core/router.js';
 import { clamp, debounce, escapeAttribute, escapeHtml, formatBytes, uid } from '../core/utils.js';
 import { estimatePdfPageCount } from '../domain/document-reader.js';
-import { MAX_PAGES, MAX_TEXT_LENGTH, validateFile, validatePageLimit, validateText } from '../domain/validators.js';
+import { MAX_FILE_SIZE, MAX_PAGES, MAX_TEXT_LENGTH, validateFile, validatePageLimit, validateText } from '../domain/validators.js';
 import { openDialog } from '../ui/dialogs.js';
 import { icon } from '../ui/icons.js';
 import { renderShell } from '../ui/shell.js';
 import { showToast } from '../ui/toast.js';
 
 const ACTIVE_DRAFT_ID = 'active-draft';
+const MAX_TOTAL_UPLOAD_SIZE = MAX_FILE_SIZE * 2;
 const objectUrls = new Map();
 let draft;
 let activeMode = 'files';
 let cleanupPaste;
 let initialModeHandled = false;
+
+function isApplePhoto(file) {
+  return /\.(?:heic|heif)$/iu.test(file?.name ?? '') || /image\/(?:heic|heif)/iu.test(file?.type ?? '');
+}
+
+async function convertApplePhoto(file) {
+  if (!isApplePhoto(file)) return file;
+  const url = URL.createObjectURL(file);
+  try {
+    const image = new Image();
+    image.decoding = 'async';
+    await new Promise((resolve, reject) => {
+      image.addEventListener('load', resolve, { once: true });
+      image.addEventListener('error', reject, { once: true });
+      image.src = url;
+    });
+    const longestSide = Math.max(image.naturalWidth, image.naturalHeight);
+    const scale = longestSide > 4096 ? 4096 / longestSide : 1;
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const context = canvas.getContext('2d', { alpha: false });
+    if (!context) throw new Error('Canvas is unavailable');
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92));
+    if (!blob) throw new Error('Image conversion failed');
+    const name = (file.name || 'photo').replace(/\.(?:heic|heif)$/iu, '') || 'photo';
+    return new File([blob], `${name}.jpg`, { type: 'image/jpeg', lastModified: file.lastModified });
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
 
 function defaultDraft() {
   const appSettings = getSettings();
@@ -207,9 +240,9 @@ function contentTemplate() {
             </div>
           </div>
           ${sourceContent()}
-          <input type="file" hidden data-file-input accept="application/pdf,image/jpeg,image/png,image/webp,text/plain,.pdf,.jpg,.jpeg,.png,.webp,.txt" multiple>
+          <input type="file" hidden data-file-input accept="application/pdf,image/jpeg,image/png,image/webp,image/heic,image/heif,text/plain,.pdf,.jpg,.jpeg,.png,.webp,.heic,.heif,.txt" multiple>
           <input type="file" hidden data-camera-input accept="image/*" capture="environment">
-          <input type="file" hidden data-replace-input accept="image/jpeg,image/png,image/webp">
+          <input type="file" hidden data-replace-input accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif">
         </section>
         ${draft.settings.provider === 'local' ? `<div class="alert alert--info" style="margin-top:14px">${icon('info')}<div><strong>${escapeHtml(t('localProvider'))}</strong><p>${escapeHtml(t('localAnalysisNotice'))}</p></div></div>` : ''}
         <section class="pages-panel">
@@ -228,10 +261,22 @@ function render() {
 
 async function addFiles(fileList) {
   const files = [...fileList];
-  for (const file of files) {
+  for (const selectedFile of files) {
+    let file;
+    try {
+      file = await convertApplePhoto(selectedFile);
+    } catch {
+      showToast({ title: t('errorTitle'), message: t('invalidFormat'), type: 'error' });
+      continue;
+    }
     const validation = validateFile(file);
     if (!validation.ok) {
       showToast({ title: t('errorTitle'), message: t(validation.messageKey), type: 'error' });
+      continue;
+    }
+    const totalSize = draft.sources.reduce((sum, source) => sum + (source.blob?.size ?? 0), 0) + file.size;
+    if (totalSize > MAX_TOTAL_UPLOAD_SIZE) {
+      showToast({ title: t('errorTitle'), message: t('totalUploadTooLarge'), type: 'error' });
       continue;
     }
     const mimeType = validation.mime;
@@ -413,14 +458,26 @@ function replacePage(pageId) {
   input.click();
 }
 
-async function handleReplace(file) {
+async function handleReplace(selectedFile) {
   const pageId = document.querySelector('[data-replace-input]')?.dataset.pageId;
   const page = draft.pages.find((item) => item.id === pageId);
   const source = sourceById(page?.sourceId);
-  if (!page || !source || !file) return;
+  if (!page || !source || !selectedFile) return;
+  let file;
+  try {
+    file = await convertApplePhoto(selectedFile);
+  } catch {
+    showToast({ title: t('errorTitle'), message: t('invalidFormat'), type: 'error' });
+    return;
+  }
   const validation = validateFile(file);
   if (!validation.ok || !validation.mime.startsWith('image/')) {
     showToast({ title: t('errorTitle'), message: t('invalidFormat'), type: 'error' });
+    return;
+  }
+  const totalSize = draft.sources.reduce((sum, item) => sum + (item.id === source.id ? 0 : (item.blob?.size ?? 0)), 0) + file.size;
+  if (totalSize > MAX_TOTAL_UPLOAD_SIZE) {
+    showToast({ title: t('errorTitle'), message: t('totalUploadTooLarge'), type: 'error' });
     return;
   }
   revokeSourceUrl(source.id);

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MAX_FILE_SIZE, validateFile, validatePageLimit, validateText } from '../src/domain/validators.js';
+import { MAX_FILE_SIZE, MAX_PAGES, validateFile, validatePageLimit, validateText } from '../src/domain/validators.js';
 import { buildRemoteAnalysisForm, textUploadFilename } from '../src/core/api.js';
 
 test('accepts supported image file', () => {
@@ -14,8 +14,8 @@ test('rejects unsupported and oversized files', () => {
 });
 
 test('validates page and text limits', () => {
-  assert.equal(validatePageLimit(9, 1).ok, true);
-  assert.equal(validatePageLimit(9, 2).ok, false);
+  assert.equal(validatePageLimit(MAX_PAGES - 1, 1).ok, true);
+  assert.equal(validatePageLimit(MAX_PAGES - 1, 2).ok, false);
   assert.equal(validateText('  ').ok, false);
   assert.equal(validateText('Нужно оплатить счёт.').ok, true);
 });
