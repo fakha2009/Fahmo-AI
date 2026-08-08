@@ -146,7 +146,7 @@ export const createAnalysisRoute: RouteHandler = async ({ req, res, ctx, rc }) =
   if (uploads.length === 0) {
     throw new AppError({ code: "VALIDATION_ERROR", message: "Запрос не содержит файлов" });
   }
-  buildManifest(pages, uploads);
+  const manifest = buildManifest(pages, uploads);
 
   const requestHash = JSON.stringify({
     files: uploads.map((upload) => `${upload.kind}:${upload.filename}:${upload.buffer.length}`),
@@ -184,6 +184,7 @@ export const createAnalysisRoute: RouteHandler = async ({ req, res, ctx, rc }) =
     sourcePreviewMode: settingsParsed.data.sourcePreviewMode ?? "temporary",
     expiresAt: null,
     idempotencyKey,
+    manifest,
   });
 
   const stagingKeys: string[] = [];
@@ -508,15 +509,19 @@ export function belongsTo(record: AnalysisRecord, sessionId: string): boolean {
 }
 
 export function statusResponse(record: AnalysisRecord, tasks: TaskRecord[] = []) {
+  const messageKey = messageKeyForStatus(record);
   return {
     analysisId: record.id,
     status: record.status,
     stage: record.stage,
     progress: record.progress ?? 0,
-    messageKey: messageKeyForStatus(record),
+    messageKey,
     updatedAt: record.updatedAt.toISOString(),
     result: record.status === "completed" || record.status === "needs_clarification"
       ? mapAnalysisResult(record, tasks)
+      : undefined,
+    error: record.status === "failed"
+      ? { code: record.errorCode ?? "INTERNAL_ERROR", messageKey }
       : undefined,
   };
 }

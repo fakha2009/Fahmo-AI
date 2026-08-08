@@ -41,6 +41,7 @@ export interface CreateAnalysisRequest {
   sourcePreviewMode: SourcePreviewMode;
   expiresAt: Date | null;
   idempotencyKey?: string | null;
+  manifest?: InputManifest | null;
 }
 
 export interface ExecuteAnalysisRequest {
@@ -91,9 +92,12 @@ export class AnalysisPipeline {
       sourcePreviewMode: input.sourcePreviewMode,
       expiresAt: input.expiresAt,
     });
+    const payload = input.manifest === undefined
+      ? { analysisId: record.id }
+      : { analysisId: record.id, manifest: input.manifest };
     const job = await this.deps.jobs.enqueue(
       ANALYSIS_QUEUE,
-      { analysisId },
+      payload,
       { dedupKey: input.idempotencyKey ?? null }
     );
     await this.publish(record.id, "analysis_created", "queued", 0, {

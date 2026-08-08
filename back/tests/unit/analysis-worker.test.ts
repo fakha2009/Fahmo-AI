@@ -55,8 +55,17 @@ class FakeAnalysisRepository implements AnalysisRepository {
   async updateStage(): Promise<AnalysisRecord | null> {
     return null;
   }
-  async updateStatus(): Promise<AnalysisRecord | null> {
-    return null;
+  async updateStatus(
+    id: string,
+    status: AnalysisRecord["status"],
+    patch?: { errorCode?: string | null; completedAt?: Date | null }
+  ): Promise<AnalysisRecord | null> {
+    const record = this.records.get(id);
+    if (record === undefined) return null;
+    record.status = status;
+    record.errorCode = patch?.errorCode ?? record.errorCode;
+    record.completedAt = patch?.completedAt ?? record.completedAt;
+    return record;
   }
   async saveResult(): Promise<void> {}
   async updateFields(): Promise<never> {
@@ -66,6 +75,8 @@ class FakeAnalysisRepository implements AnalysisRepository {
 
 class FakeInputRepository implements AnalysisInputRepository {
   private inputs = new Map<string, AnalysisInputRecord[]>();
+  listCalls = 0;
+  onList: ((analysisId: string, call: number) => void) | null = null;
 
   seed(analysisId: string, inputs: AnalysisInputRecord[]) {
     this.inputs.set(analysisId, inputs);
@@ -73,6 +84,8 @@ class FakeInputRepository implements AnalysisInputRepository {
 
   async saveForAnalysis(): Promise<void> {}
   async listForAnalysis(analysisId: string): Promise<AnalysisInputRecord[]> {
+    this.listCalls += 1;
+    this.onList?.(analysisId, this.listCalls);
     return this.inputs.get(analysisId) ?? [];
   }
 }
@@ -138,7 +151,7 @@ class FakePipeline {
   }
 }
 
-function build() {
+function build(options: { inputReadyTimeoutMs?: number; inputReadyPollMs?: number } = {}) {
   const repository = new FakeAnalysisRepository();
   const inputs = new FakeInputRepository();
   const storage = new FakeStorage();
@@ -152,6 +165,8 @@ function build() {
     storage: storage as never,
     cancelPollIntervalMs: 10,
     pollIntervalMs: 10,
+    inputReadyTimeoutMs: options.inputReadyTimeoutMs ?? 0,
+    inputReadyPollMs: options.inputReadyPollMs ?? 1,
   });
   return { repository, inputs, jobs, pipeline, worker };
 }
@@ -197,6 +212,46 @@ test("AnalysisWorker: успешное выполнение → complete + ре�
   assert.deepEqual(pipeline.executeCalls[0]?.previewPolicy, { mode: "temporary", ttl: { hours: 24 } });
 });
 
+test("AnalysisWorker: передаёт сохранённый manifest в ingestion pipeline", async () => {
+  const { repository, inputs, jobs, pipeline, worker } = build();
+  repository.seed("a1", "queued");
+  inputs.seed("a1", [stagedInput()]);
+  const manifest = [{
+    clientPageId: "page-1",
+    fileIndex: 0,
+    sourcePageNumber: 1,
+    finalOrder: 0,
+    rotation: 0,
+    crop: null,
+  }];
+  jobs.push({ analysisId: "a1", manifest });
+  pipeline.behavior = async () => ({ ok: true });
+
+  await worker.runOnce();
+
+  assert.deepEqual(pipeline.executeCalls[0]?.manifest, manifest);
+  assert.equal(jobs.queue[0]?.completed, true);
+});
+
+test("AnalysisWorker: ждёт сохранения входов перед запуском pipeline", async () => {
+  const { repository, inputs, jobs, pipeline, worker } = build({
+    inputReadyTimeoutMs: 50,
+    inputReadyPollMs: 1,
+  });
+  repository.seed("a1", "queued");
+  inputs.onList = (analysisId, call) => {
+    if (call === 2) inputs.seed(analysisId, [stagedInput()]);
+  };
+  jobs.push({ analysisId: "a1" });
+  pipeline.behavior = async () => ({ ok: true });
+
+  await worker.runOnce();
+
+  assert.equal(inputs.listCalls, 2);
+  assert.equal(pipeline.executeCalls.length, 1);
+  assert.equal(jobs.queue[0]?.completed, true);
+});
+
 test("AnalysisWorker: ошибка выполнения → fail с кодом", async () => {
   const { repository, inputs, jobs, pipeline, worker } = build();
   repository.seed("a1", "queued");
@@ -224,6 +279,8 @@ test("AnalysisWorker: нет входных данных → fail NOT_FOUND", as
   jobs.push({ analysisId: "a1" });
   await worker.runOnce();
   assert.equal(jobs.queue[0]?.failed, "NOT_FOUND");
+  assert.equal((await repository.get("a1"))?.status, "failed");
+  assert.equal((await repository.get("a1"))?.errorCode, "NOT_FOUND");
 });
 
 test("AnalysisWorker: отмена через polling прерывает выполнение и завершает job", async () => {

@@ -7,11 +7,14 @@ import { toInputEnvelopes } from "./analysis-input-repository";
 import type { AnalysisRecord, AnalysisRepository } from "./analysis-repository";
 import type { ClaimedJob, JobRepository } from "./job-repository";
 import { previewPolicyFor } from "../../preview/domain/policy";
+import { InputManifestSchema, type InputManifest } from "../../../validation/request/manifest";
 
 export const WORKER_DEFAULT_POLL_MS = 2_000;
 export const WORKER_DEFAULT_CANCEL_POLL_MS = 1_500;
 export const WORKER_DEFAULT_STALE_MS = 10 * 60 * 1000;
 export const WORKER_DEFAULT_MAX_JOBS_PER_RUN = 10;
+export const WORKER_INPUT_READY_TIMEOUT_MS = 5_000;
+export const WORKER_INPUT_READY_POLL_MS = 100;
 
 export interface AnalysisWorkerDeps {
   pipeline: AnalysisPipeline;
@@ -24,6 +27,8 @@ export interface AnalysisWorkerDeps {
   cancelPollIntervalMs?: number;
   staleAfterMs?: number;
   maxJobsPerRun?: number;
+  inputReadyTimeoutMs?: number;
+  inputReadyPollMs?: number;
   onCompleted?: (analysis: AnalysisRecord) => Promise<void>;
 }
 
@@ -43,6 +48,8 @@ export class AnalysisWorker {
   private readonly cancelPollIntervalMs: number;
   private readonly staleAfterMs: number;
   private readonly maxJobsPerRun: number;
+  private readonly inputReadyTimeoutMs: number;
+  private readonly inputReadyPollMs: number;
 
   constructor(private readonly deps: AnalysisWorkerDeps) {
     this.queue = deps.queue ?? ANALYSIS_QUEUE;
@@ -50,6 +57,8 @@ export class AnalysisWorker {
     this.cancelPollIntervalMs = deps.cancelPollIntervalMs ?? WORKER_DEFAULT_CANCEL_POLL_MS;
     this.staleAfterMs = deps.staleAfterMs ?? WORKER_DEFAULT_STALE_MS;
     this.maxJobsPerRun = deps.maxJobsPerRun ?? WORKER_DEFAULT_MAX_JOBS_PER_RUN;
+    this.inputReadyTimeoutMs = deps.inputReadyTimeoutMs ?? WORKER_INPUT_READY_TIMEOUT_MS;
+    this.inputReadyPollMs = deps.inputReadyPollMs ?? WORKER_INPUT_READY_POLL_MS;
   }
 
   async runOnce(): Promise<AnalysisWorkerRunReport> {
@@ -78,11 +87,12 @@ export class AnalysisWorker {
   }
 
   private async runJob(job: ClaimedJob): Promise<void> {
-    const analysisId = extractAnalysisId(job.payload);
-    if (analysisId === null) {
-      await this.deps.jobs.fail(job.id, "INVALID_JOB_PAYLOAD", "payload должен содержать analysisId");
+    const payload = extractAnalysisJobPayload(job.payload);
+    if (payload === null) {
+      await this.deps.jobs.fail(job.id, "INVALID_JOB_PAYLOAD", "payload должен содержать analysisId и корректный manifest");
       return;
     }
+    const { analysisId, manifest } = payload;
 
     try {
       const analysis = await this.deps.repository.get(analysisId);
@@ -93,7 +103,7 @@ export class AnalysisWorker {
           params: { analysisId },
         });
       }
-      const inputs = await this.deps.inputs.listForAnalysis(analysisId);
+      const inputs = await this.waitForInputs(analysisId);
       if (inputs.length === 0) {
         throw new AppError({
           code: "NOT_FOUND",
@@ -110,7 +120,7 @@ export class AnalysisWorker {
         await this.deps.pipeline.execute({
           analysisId,
           files: envelopes,
-          manifest: null,
+          manifest,
           previewPolicy: previewPolicyFor(analysis.sourcePreviewMode),
         });
       } finally {
@@ -133,7 +143,22 @@ export class AnalysisWorker {
         await this.deps.jobs.complete(job.id);
         return;
       }
+      if (record !== null && record.status !== "failed" && record.status !== "completed") {
+        await this.deps.repository.updateStatus(analysisId, "failed", { errorCode: appError.code }).catch(() => null);
+      }
+      console.error("[analysis] job failed", JSON.stringify({ analysisId, code: appError.code }));
       await this.deps.jobs.fail(job.id, appError.code, appError.message);
+    }
+  }
+
+  private async waitForInputs(analysisId: string): Promise<Awaited<ReturnType<AnalysisInputRepository["listForAnalysis"]>>> {
+    const deadline = Date.now() + this.inputReadyTimeoutMs;
+    while (true) {
+      const inputs = await this.deps.inputs.listForAnalysis(analysisId);
+      if (inputs.length > 0 || Date.now() >= deadline) {
+        return inputs;
+      }
+      await sleep(Math.min(this.inputReadyPollMs, Math.max(1, deadline - Date.now())));
     }
   }
 
@@ -153,12 +178,20 @@ export class AnalysisWorker {
   }
 }
 
-function extractAnalysisId(payload: unknown): string | null {
+function extractAnalysisJobPayload(payload: unknown): { analysisId: string; manifest: InputManifest | null } | null {
   if (payload === null || typeof payload !== "object") {
     return null;
   }
-  const value = (payload as Record<string, unknown>).analysisId;
-  return typeof value === "string" && value.length > 0 ? value : null;
+  const record = payload as Record<string, unknown>;
+  const analysisId = record.analysisId;
+  if (typeof analysisId !== "string" || analysisId.length === 0) {
+    return null;
+  }
+  if (record.manifest === undefined || record.manifest === null) {
+    return { analysisId, manifest: null };
+  }
+  const parsed = InputManifestSchema.safeParse(record.manifest);
+  return parsed.success ? { analysisId, manifest: parsed.data } : null;
 }
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {

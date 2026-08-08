@@ -313,6 +313,33 @@ test("AnalysisPipeline: createFromRequest создаёт Analysis (queued) и jo
   assert.equal(events.events[0]?.id, 1);
 });
 
+test("AnalysisPipeline: createFromRequest сохраняет manifest в задании очереди", async () => {
+  const { pipeline, jobs } = build();
+  const manifest = [{
+    clientPageId: "page-1",
+    fileIndex: 0,
+    sourcePageNumber: 1,
+    finalOrder: 0,
+    rotation: 0 as const,
+    crop: null,
+  }];
+
+  const { analysisId } = await pipeline.createFromRequest({
+    sessionId: "session-1",
+    userId: null,
+    sourceType: "pdf",
+    documentType: "other",
+    outputLanguage: "ru",
+    explanationMode: "standard",
+    retentionMode: "temporary",
+    sourcePreviewMode: "no_preview",
+    expiresAt: null,
+    manifest,
+  });
+
+  assert.deepEqual(jobs.jobs[0]?.payload, { analysisId, manifest });
+});
+
 test("AnalysisPipeline: execute проходит все стадии и удаляет временные данные", async () => {
   const { pipeline, repository, events, storage, ingestion, gateway } = build();
   ingestion.files = [imageFile("staging/processed/1.jpg"), imageFile("staging/processed/2.jpg")];
