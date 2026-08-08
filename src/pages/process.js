@@ -85,7 +85,10 @@ function renderProcess(analysis, options = {}) {
       <div class="process-shell">
         <section class="card process-card">
           <div class="process-mascot-wrap" data-active="${!completed && !failed && !cancelled}" aria-hidden="true">
-            <img class="process-mascot process-mascot--gif" src="/public/assets/mascot-analyzing.gif" alt="">
+            <picture>
+              <source srcset="/public/assets/mascot-analyzing.webp" type="image/webp">
+              <img class="process-mascot process-mascot--gif" src="/public/assets/mascot-analyzing.gif" alt="">
+            </picture>
             <img class="process-mascot process-mascot--still" src="/public/assets/icon-192-v2.png" alt="">
           </div>
           <h1>${escapeHtml(failed ? t('errorTitle') : cancelled ? t('statusCancelled') : completed ? t('statusCompleted') : t('processTitle'))}</h1>
