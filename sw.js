@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'fahmo-ai-v1.2.0';
+const CACHE_VERSION = 'fahmo-ai-v1.3.0';
 const APP_SHELL = [
   '/',
   '/index.html',
@@ -9,9 +9,12 @@ const APP_SHELL = [
   '/public/assets/mascot-dark.webp',
   '/public/assets/hero-documents-light.webp',
   '/public/assets/hero-documents-dark.webp',
-  '/public/assets/icon-192.png',
-  '/public/assets/icon-512.png',
-  '/public/assets/icon-maskable-512.png',
+  '/public/assets/favicon-16-v2.png',
+  '/public/assets/favicon-32-v2.png',
+  '/public/assets/apple-touch-icon-v2.png',
+  '/public/assets/icon-192-v2.png',
+  '/public/assets/icon-512-v2.png',
+  '/public/assets/icon-maskable-512-v2.png',
   '/src/app.js',
   '/src/core/api.js',
   '/src/core/db.js',
@@ -37,6 +40,21 @@ const APP_SHELL = [
   '/src/ui/shell.js',
   '/src/ui/toast.js',
 ];
+
+function unavailableResponse(request) {
+  const isNavigation = request.mode === 'navigate';
+  const body = isNavigation
+    ? '<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Fahmo AI — нет подключения</title><body><main><h1>Нет подключения</h1><p>Проверьте интернет и повторите попытку.</p></main></body></html>'
+    : 'Resource unavailable while offline';
+  return new Response(body, {
+    status: 503,
+    statusText: 'Service Unavailable',
+    headers: {
+      'Content-Type': isNavigation ? 'text/html; charset=utf-8' : 'text/plain; charset=utf-8',
+      'Cache-Control': 'no-store',
+    },
+  });
+}
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE_VERSION).then((cache) => cache.addAll(APP_SHELL)));
@@ -80,7 +98,7 @@ self.addEventListener('fetch', (event) => {
           }
           return response;
         })
-        .catch(async () => (await caches.match('/index.html')) ?? Response.error())
+        .catch(async () => (await caches.match('/index.html')) ?? (await caches.match('/')) ?? unavailableResponse(request))
     );
     return;
   }
@@ -94,7 +112,7 @@ self.addEventListener('fetch', (event) => {
           }
           return response;
         })
-        .catch(() => cached ?? Response.error());
+        .catch(() => cached ?? unavailableResponse(request));
       return cached ?? network;
     })
   );

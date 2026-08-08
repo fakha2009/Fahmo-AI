@@ -18,8 +18,7 @@ export function renderShell({ title = '', content = '', actions = '', currentPat
     <div class="app-shell">
       <aside class="sidebar" aria-label="Основная навигация">
         <a class="brand" href="/" data-router aria-label="${escapeHtml(t('appName'))}">
-          <img class="brand__mark theme-image--light" src="/public/assets/mascot-light.webp" alt="">
-          <img class="brand__mark theme-image--dark" src="/public/assets/mascot-dark.webp" alt="">
+          <img class="brand__mark" src="/public/assets/icon-192-v2.png" alt="">
           <span>${escapeHtml(t('appName'))}</span>
         </a>
         <nav class="nav-list">

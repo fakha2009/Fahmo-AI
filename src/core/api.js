@@ -153,6 +153,15 @@ export function getRemoteAnalysis(baseUrl, remoteId, signal) {
   return fahmoApiClient(baseUrl).request(`/analyses/${encodeURIComponent(remoteId)}`, { signal, retries: 2 });
 }
 
+export function getRemoteSourcePreview(baseUrl, analysisId, sourceAssetId, signal) {
+  return fahmoApiClient(baseUrl).request(`/analyses/${encodeURIComponent(analysisId)}/sources/${encodeURIComponent(sourceAssetId)}`, {
+    signal,
+    retries: 1,
+    responseType: 'blob',
+    timeoutMs: 30_000,
+  });
+}
+
 export function listRemoteAnalyses(baseUrl, signal, limit = 50) {
   return fahmoApiClient(baseUrl).request(`/analyses?limit=${Math.min(Math.max(limit, 1), 50)}`, { signal, retries: 1 });
 }

@@ -74,8 +74,7 @@ export async function homePage() {
       <section class="hero" aria-labelledby="home-title">
         <div class="hero__content">
           <div class="hero__eyebrow">
-            <img class="theme-image--light" src="/public/assets/mascot-light.webp" alt="">
-            <img class="theme-image--dark" src="/public/assets/mascot-dark.webp" alt="">
+            <img src="/public/assets/icon-192-v2.png" alt="">
             <span>${escapeHtml(t('appName'))}</span>
           </div>
           <h1 id="home-title">${escapeHtml(t('tagline'))}</h1>

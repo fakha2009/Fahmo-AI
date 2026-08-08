@@ -28,6 +28,7 @@ import type { AnalysisRepository } from "./analysis-repository";
 import type { AnalysisEventPublisher } from "./analysis-event-publisher";
 import type { JobRepository } from "./job-repository";
 import { ResultChecker } from "./result-checker";
+import { attachSourceAssetIds } from "./source-reference-binder";
 
 export interface CreateAnalysisRequest {
   sessionId: string | null;
@@ -117,6 +118,7 @@ export class AnalysisPipeline {
     const controller = new AbortController();
     this.controllers.set(input.analysisId, controller);
     let stagedKeys: string[] = [];
+    const sourceAssetIds = new Map<string, string>();
     try {
       await this.setStatus(record.id, "processing");
       await this.enterStage(record.id, "validating");
@@ -137,7 +139,10 @@ export class AnalysisPipeline {
       if (this.deps.assets !== undefined) {
         const previews = processed.files.flatMap((file) => file.previews);
         if (previews.length > 0) {
-          await this.deps.assets.save(record.id, previews);
+          const savedAssets = await this.deps.assets.save(record.id, previews);
+          for (const asset of savedAssets) {
+            sourceAssetIds.set(asset.clientPageId, asset.id);
+          }
         }
       }
 
@@ -161,7 +166,7 @@ export class AnalysisPipeline {
       await this.enterStage(record.id, "checking_result");
       const check = this.checker.check(result);
       if (check.requiresClarification) {
-        const partial = this.normalize(result, record.outputLanguage);
+        const partial = this.normalize(result, record.outputLanguage, sourceAssetIds);
         await this.deps.repository.saveResult(record.id, {
           result: partial,
           detectedLanguages: partial.detectedLanguages,
@@ -183,7 +188,7 @@ export class AnalysisPipeline {
       }
 
       await this.enterStage(record.id, "normalizing");
-      const normalized = this.normalize(result, record.outputLanguage);
+      const normalized = this.normalize(result, record.outputLanguage, sourceAssetIds);
 
       await this.enterStage(record.id, "saving");
       await this.deps.repository.saveResult(record.id, {
@@ -291,11 +296,15 @@ export class AnalysisPipeline {
     return pages;
   }
 
-  private normalize(result: AnalysisResult, language: OutputLanguage): AnalysisResult {
-    return {
+  private normalize(
+    result: AnalysisResult,
+    language: OutputLanguage,
+    sourceAssetIds: ReadonlyMap<string, string>
+  ): AnalysisResult {
+    return attachSourceAssetIds({
       ...result,
       outputLanguage: language,
-    };
+    }, sourceAssetIds);
   }
 
   private async cleanupStaged(keys: string[]): Promise<void> {

@@ -569,14 +569,11 @@ function handleInitialMode(search) {
     activeMode = 'text';
     render();
     setTimeout(() => document.querySelector('#document-text')?.focus(), 0);
-  } else if (mode === 'camera') {
+  } else if (mode === 'camera' || mode === 'files') {
     activeMode = 'files';
     render();
-    setTimeout(() => document.querySelector('[data-camera-input]')?.click(), 80);
-  } else if (mode === 'files') {
-    activeMode = 'files';
-    render();
-    setTimeout(() => document.querySelector('[data-file-input]')?.click(), 80);
+    const selector = mode === 'camera' ? '[data-take-photo]' : '[data-choose-file]';
+    setTimeout(() => document.querySelector(selector)?.focus({ preventScroll: true }), 0);
   } else if (mode === 'paste') {
     activeMode = 'files';
     render();

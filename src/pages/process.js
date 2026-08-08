@@ -14,6 +14,59 @@ let activeAnalysisId;
 
 const stageOrder = ['read', 'find', 'verify', 'tasks'];
 const stageLabels = { read: 'processRead', find: 'processFind', verify: 'processVerify', tasks: 'processTasks' };
+const warningTranslations = {
+  UNCLEAR_TEXT: 'warningUnclearText',
+  AMBIGUOUS_DATE: 'warningAmbiguousDate',
+  AMBIGUOUS_AMOUNT: 'warningAmbiguousAmount',
+  CONFLICTING_INFORMATION: 'warningConflictingInfo',
+  MISSING_INFORMATION: 'warningMissingInfo',
+  LOW_CONFIDENCE: 'warningLowConfidence',
+  UNSUPPORTED_CONTENT: 'warningUnsupportedContent',
+};
+
+function isMessageKey(value) {
+  return typeof value === 'string' && /^errors(?:\.|$)/u.test(value.trim());
+}
+
+export function normalizeSourceReference(value) {
+  if (typeof value === 'string') {
+    const page = value.match(/^p\.(\d+)$/u)?.[1];
+    return page ? { sourceId: null, clientPageId: null, sourceAssetId: null, page: Number(page), excerpt: '', boundingBox: null } : null;
+  }
+  if (!value || typeof value !== 'object') return null;
+  const sourceId = value.sourceId || value.clientPageId || null;
+  const sourceAssetId = value.sourceAssetId || value.assetId || null;
+  const pageValue = Number(value.pageNumber ?? value.page ?? 1);
+  const page = Number.isInteger(pageValue) && pageValue > 0 ? pageValue : 1;
+  const excerpt = typeof value.excerpt === 'string' ? value.excerpt.trim() : '';
+  const box = value.boundingBox ?? value.coordinates;
+  const boundingBox = box && typeof box === 'object'
+    && ['x', 'y', 'width', 'height'].every((key) => Number.isFinite(Number(box[key])))
+    ? {
+        x: Math.max(0, Math.min(1, Number(box.x))),
+        y: Math.max(0, Math.min(1, Number(box.y))),
+        width: Math.max(0, Math.min(1, Number(box.width))),
+        height: Math.max(0, Math.min(1, Number(box.height))),
+      }
+    : null;
+  if (!sourceId && !sourceAssetId && !excerpt) return null;
+  return { sourceId, clientPageId: value.clientPageId || sourceId, sourceAssetId, page, excerpt, boundingBox };
+}
+
+export function normalizeRemoteWarning(item, index) {
+  const warning = item && typeof item === 'object' ? item : {};
+  const translation = warningTranslations[String(warning.code ?? '').toUpperCase()] ?? 'warningNeedsReview';
+  const title = warning.title && !isMessageKey(warning.title) ? warning.title : t(`${translation}Title`);
+  const message = warning.message && !isMessageKey(warning.message) ? warning.message : t(`${translation}Message`);
+  return {
+    ...warning,
+    id: warning.id || `remote_warning_${index}`,
+    title,
+    message,
+    severity: warning.severity || 'warning',
+    source: normalizeSourceReference(warning.source ?? warning.sourceRefs?.[0]),
+  };
+}
 
 function renderProcess(analysis, options = {}) {
   const activeIndex = stageOrder.indexOf(analysis.progressStep ?? 'read');
@@ -71,10 +124,10 @@ export function normalizeRemoteResult(payload, analysis) {
     resultLanguage: result.resultLanguage || analysis.settings.resultLanguage || 'ru',
     createdAt: result.createdAt || new Date().toISOString(),
     summary: typeof result.summary === 'string' ? { standard: result.summary, simple: result.simpleSummary || result.summary } : (result.summary || { standard: '', simple: '' }),
-    tasks: Array.isArray(result.tasks) ? result.tasks.map((task, index) => ({ id: task.id || `remote_task_${index}`, title: task.title || task.name || '', simpleTitle: task.simpleTitle || task.simple_title || task.title || task.name || '', description: task.description || '', completed: Boolean(task.completed), priority: task.priority || 'medium', dueDate: task.dueDate || task.due_date || null, dueTime: task.dueTime || task.due_time || null, location: task.location || null, reminderMinutes: task.reminderMinutes ?? task.reminder_minutes ?? null, source: task.source || null, userEdited: Boolean(task.userEdited), revision: Number.isInteger(task.revision) ? task.revision : 1 })) : [],
-    importantData: Array.isArray(result.importantData) ? result.importantData.map((item, index) => ({ id: item.id || `remote_data_${index}`, type: item.type || 'other', value: item.value == null ? '' : String(item.value), confidence: item.confidence || 'medium', source: item.source || null, userEdited: Boolean(item.userEdited) })) : [],
+    tasks: Array.isArray(result.tasks) ? result.tasks.map((task, index) => ({ id: task.id || `remote_task_${index}`, title: task.title || task.name || '', simpleTitle: task.simpleTitle || task.simple_title || task.title || task.name || '', description: task.description || '', completed: Boolean(task.completed), priority: task.priority || 'medium', dueDate: task.dueDate || task.due_date || null, dueTime: task.dueTime || task.due_time || null, location: task.location || null, reminderMinutes: task.reminderMinutes ?? task.reminder_minutes ?? null, source: normalizeSourceReference(task.source ?? task.sourceRefs?.[0]), userEdited: Boolean(task.userEdited), revision: Number.isInteger(task.revision) ? task.revision : 1 })) : [],
+    importantData: Array.isArray(result.importantData) ? result.importantData.map((item, index) => ({ id: item.id || `remote_data_${index}`, type: item.type || 'other', value: item.value == null ? '' : String(item.value), confidence: item.confidence || 'medium', source: normalizeSourceReference(item.source ?? item.sourceRefs?.[0]), userEdited: Boolean(item.userEdited) })) : [],
     clarifications: Array.isArray(result.clarifications) ? result.clarifications.map((item, index) => ({ id: item.id || `remote_clarification_${index}`, ...item })) : [],
-    warnings: Array.isArray(result.warnings) ? result.warnings.map((item, index) => ({ id: item.id || `remote_warning_${index}`, title: item.title || t('warnings'), message: item.message || '', severity: item.severity || 'warning', ...item })) : [],
+    warnings: Array.isArray(result.warnings) ? result.warnings.map(normalizeRemoteWarning) : [],
     sourceText: result.sourceText || '',
     pageTexts: Array.isArray(result.pageTexts) ? result.pageTexts : [],
     provider: 'remote',

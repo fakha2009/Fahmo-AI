@@ -55,6 +55,12 @@ try {
   await check('/public/assets/mascot-dark.webp', 'image/webp');
   await check('/public/assets/hero-documents-light.webp', 'image/webp');
   await check('/public/assets/hero-documents-dark.webp', 'image/webp');
+  await check('/public/assets/favicon-16-v2.png', 'image/png');
+  await check('/public/assets/favicon-32-v2.png', 'image/png');
+  await check('/public/assets/apple-touch-icon-v2.png', 'image/png');
+  await check('/public/assets/icon-192-v2.png', 'image/png');
+  await check('/public/assets/icon-512-v2.png', 'image/png');
+  await check('/public/assets/icon-maskable-512-v2.png', 'image/png');
 
   const missing = await fetch(`${origin}/does-not-exist.js`);
   if (missing.status !== 404) throw new Error(`Unknown static file must return 404, received ${missing.status}`);

@@ -1,4 +1,4 @@
-import { escapeHtml } from '../core/utils.js';
+import { escapeAttribute, escapeHtml } from '../core/utils.js';
 import { icon } from './icons.js';
 
 function ensureDialog(id) {
@@ -14,9 +14,11 @@ function ensureDialog(id) {
 
 export function openDialog({ id = 'app-dialog', title, body, footer = '', onOpen, onClose, closeLabel = 'Закрыть' }) {
   const dialog = ensureDialog(id);
+  const titleId = `${id}-title`;
+  dialog.setAttribute('aria-labelledby', titleId);
   dialog.innerHTML = `
     <div class="dialog__header">
-      <h2>${escapeHtml(title)}</h2>
+      <h2 id="${escapeAttribute(titleId)}">${escapeHtml(title)}</h2>
       <button class="icon-button" type="button" aria-label="${escapeHtml(closeLabel)}" data-dialog-close>${icon('close')}</button>
     </div>
     <div class="dialog__body">${body}</div>

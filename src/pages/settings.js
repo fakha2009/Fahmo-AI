@@ -183,7 +183,7 @@ function testNotification() {
     showToast({ title: t('errorTitle'), message: t('allowNotifications'), type: 'warning' });
     return;
   }
-  new Notification(t('appName'), { body: t('notificationSent'), icon: '/public/assets/icon-192.png' });
+  new Notification(t('appName'), { body: t('notificationSent'), icon: '/public/assets/icon-192-v2.png' });
   showToast({ title: t('notificationSent'), type: 'success' });
 }
 

@@ -1,11 +1,11 @@
-import { answerRemoteClarification, completeRemoteTask, createRemoteExport, createRemoteReminder, createRemoteShare, downloadRemoteExport, getRemoteExport, patchRemoteTask, revokeRemoteShare } from '../core/api.js';
+import { answerRemoteClarification, completeRemoteTask, createRemoteExport, createRemoteReminder, createRemoteShare, downloadRemoteExport, getRemoteExport, getRemoteSourcePreview, patchRemoteTask, revokeRemoteShare } from '../core/api.js';
 import { getLanguage, t } from '../core/i18n.js';
 import { deleteShare, getAnalysis, saveAnalysis, saveDraft, saveShare } from '../core/repository.js';
 import { navigate } from '../core/router.js';
 import { getSettings } from '../core/settings.js';
 import { copyText, downloadBlob, escapeAttribute, escapeHtml, formatDate, uid, wait } from '../core/utils.js';
 import { createResultPdf, downloadTaskCalendar } from '../domain/exporters.js';
-import { normalizeRemoteResult } from './process.js';
+import { normalizeRemoteResult, normalizeSourceReference } from './process.js';
 import { confirmDialog, openDialog } from '../ui/dialogs.js';
 import { icon } from '../ui/icons.js';
 import { renderShell } from '../ui/shell.js';
@@ -16,17 +16,22 @@ let mode = 'standard';
 const objectUrls = new Map();
 
 function sourceById(id) { return analysis.sources?.find((source) => source.id === id); }
+function pageByClientId(id) { return analysis.pages?.find((page) => page.id === id); }
 function sourceUrl(source) {
   if (!source?.blob) return '';
   if (!objectUrls.has(source.id)) objectUrls.set(source.id, URL.createObjectURL(source.blob));
   return objectUrls.get(source.id);
 }
+function blobUrl(key, blob) {
+  if (!objectUrls.has(key)) objectUrls.set(key, URL.createObjectURL(blob));
+  return objectUrls.get(key);
+}
 function releaseUrls() { for (const url of objectUrls.values()) URL.revokeObjectURL(url); objectUrls.clear(); }
 
 function typeLabel(type) {
-  return ({ announcement: t('announcement'), 'work-order': t('workOrder'), handwritten: t('handwritten'), other: t('other'), date: t('dateLabel'), time: t('timeLabel'), amount: t('amount'), address: t('address'), contact: t('contact'), link: t('link'), deadline: t('deadline') })[type] ?? type;
+  return ({ announcement: t('announcement'), 'work-order': t('workOrder'), handwritten: t('handwritten'), other: t('other'), date: t('dateLabel'), time: t('timeLabel'), amount: t('amount'), address: t('address'), contact: t('contact'), link: t('link'), deadline: t('deadline'), document: t('document') })[type] ?? type;
 }
-function typeIcon(type) { return ({ date: 'calendar', time: 'clock', amount: 'money', address: 'mapPin', contact: 'phone', link: 'link', deadline: 'calendar' })[type] ?? 'info'; }
+function typeIcon(type) { return ({ date: 'calendar', time: 'clock', amount: 'money', address: 'mapPin', contact: 'phone', link: 'link', deadline: 'calendar', document: 'file' })[type] ?? 'info'; }
 function priorityLabel(priority) { return ({ high: t('high'), medium: t('medium'), low: t('low') })[priority] ?? priority; }
 function confidenceLabel(level) { return ({ high: t('confidenceHigh'), medium: t('confidenceMedium'), low: t('confidenceLow') })[level] ?? level; }
 
@@ -71,7 +76,7 @@ function dataItem(item) {
       <div class="data-item__meta">
         <span class="confidence" data-level="${escapeAttribute(item.confidence || 'medium')}">${escapeHtml(confidenceLabel(item.confidence || 'medium'))}${item.userEdited ? ` · ${escapeHtml(t('confirmed'))}` : ''}</span>
         <span>
-          <button class="icon-button" type="button" data-source-data="${escapeAttribute(item.id)}" aria-label="${escapeAttribute(t('showSource'))}">${icon('search', { size: 17 })}</button>
+          ${item.source ? `<button class="icon-button" type="button" data-source-data="${escapeAttribute(item.id)}" aria-label="${escapeAttribute(t('showSource'))}">${icon('search', { size: 17 })}</button>` : ''}
           <button class="icon-button" type="button" data-edit-data="${escapeAttribute(item.id)}" aria-label="${escapeAttribute(t('saveChanges'))}">${icon('edit', { size: 17 })}</button>
         </span>
       </div>
@@ -146,7 +151,7 @@ function resultTemplate() {
 
         <section class="card card--padded">
           <div class="card__header"><div><h2 class="card__title">${escapeHtml(t('warnings'))}</h2></div></div>
-          ${result.warnings?.length ? `<div class="settings-stack">${result.warnings.map((warning) => `<div class="alert alert--warning">${icon('alert')}<div><strong>${escapeHtml(warning.title)}</strong><p>${escapeHtml(warning.message)}</p></div></div>`).join('')}</div>` : `<div class="alert alert--success">${icon('success')}<div><strong>${escapeHtml(t('noWarnings'))}</strong></div></div>`}
+          ${result.warnings?.length ? `<div class="settings-stack">${result.warnings.map((warning) => `<div class="alert alert--warning">${icon('alert')}<div class="alert__content"><strong>${escapeHtml(warning.title)}</strong><p>${escapeHtml(warning.message)}</p>${warning.source ? `<button class="filter-chip alert__source" type="button" data-source-warning="${escapeAttribute(warning.id)}">${icon('search', { size: 14 })}${escapeHtml(t('showSource'))}</button>` : ''}</div></div>`).join('')}</div>` : `<div class="alert alert--success">${icon('success')}<div><strong>${escapeHtml(t('noWarnings'))}</strong></div></div>`}
         </section>
       </div>
       <aside class="result-aside">
@@ -301,21 +306,75 @@ function editData(dataId) {
   });
 }
 
-function showSource(source) {
-  if (!source) return;
-  const original = sourceById(source.sourceId);
-  let media = '';
-  if (original?.kind === 'image') media = `<img src="${escapeAttribute(sourceUrl(original))}" alt="${escapeAttribute(original.name)}">`;
-  else if (original?.kind === 'pdf') media = `<iframe title="${escapeAttribute(original.name)}" src="${escapeAttribute(sourceUrl(original))}#page=${source.page || 1}"></iframe>`;
-  else {
-    const pageText = analysis.result.pageTexts?.find((page) => page.sourceId === source.sourceId)?.text || analysis.result.sourceText || original?.text || '';
-    media = `<pre style="white-space:pre-wrap;padding:20px;margin:0">${escapeHtml(pageText)}</pre>`;
+function imageSourceMarkup(url, label, boundingBox) {
+  const box = boundingBox && boundingBox.width > 0 && boundingBox.height > 0
+    ? {
+        x: Math.min(boundingBox.x, 1),
+        y: Math.min(boundingBox.y, 1),
+        width: Math.min(boundingBox.width, 1 - Math.min(boundingBox.x, 1)),
+        height: Math.min(boundingBox.height, 1 - Math.min(boundingBox.y, 1)),
+      }
+    : null;
+  const highlight = box
+    ? `<span class="source-highlight" style="--source-x:${(box.x * 100).toFixed(3)}%;--source-y:${(box.y * 100).toFixed(3)}%;--source-width:${(box.width * 100).toFixed(3)}%;--source-height:${(box.height * 100).toFixed(3)}%" aria-label="${escapeAttribute(t('sourceExcerpt'))}"></span>`
+    : '';
+  return `<div class="source-preview__image"><img src="${escapeAttribute(url)}" alt="${escapeAttribute(label)}">${highlight}</div>`;
+}
+
+function textSourceMarkup(text, excerpt) {
+  if (!text) return '';
+  if (!excerpt) return `<pre>${escapeHtml(text)}</pre>`;
+  const index = text.toLocaleLowerCase().indexOf(excerpt.toLocaleLowerCase());
+  if (index < 0) return `<pre>${escapeHtml(text)}</pre>`;
+  const before = text.slice(0, index);
+  const match = text.slice(index, index + excerpt.length);
+  const after = text.slice(index + excerpt.length);
+  return `<pre>${escapeHtml(before)}<mark data-source-mark>${escapeHtml(match)}</mark>${escapeHtml(after)}</pre>`;
+}
+
+function sourcePreviewBody(media, source, showCoordinatesNote = false) {
+  return `<div class="source-preview"><div class="source-preview__media">${media || `<p>${escapeHtml(t('sourceUnavailable'))}</p>`}</div>${showCoordinatesNote ? `<p class="source-location-note">${escapeHtml(t('sourceCoordinatesUnavailable'))}</p>` : ''}<div class="source-quote"><strong>${escapeHtml(t('sourceExcerpt'))}</strong><div>${escapeHtml(source.excerpt || t('sourceUnavailable'))}</div></div></div>`;
+}
+
+async function showSource(value) {
+  const source = normalizeSourceReference(value);
+  if (!source) {
+    showToast({ title: t('source'), message: t('sourceUnavailable'), type: 'info' });
+    return;
   }
-  openDialog({
+  const page = pageByClientId(source.clientPageId || source.sourceId);
+  const original = sourceById(page?.sourceId || source.sourceId);
+  const { dialog } = openDialog({
     id: 'source-dialog',
-    title: `${t('sourcePage')} ${source.page || 1}`,
-    body: `<div class="source-preview"><div class="source-preview__media">${media || `<p>${escapeHtml(t('sourceUnavailable'))}</p>`}</div><div class="source-quote"><strong>${escapeHtml(t('sourceExcerpt'))}</strong><div>${escapeHtml(source.excerpt || t('sourceUnavailable'))}</div></div></div>`
+    title: `${t('sourcePage')} ${source.page}`,
+    body: `<div class="source-preview source-preview--loading"><div class="source-preview__media"><div class="source-loader" role="status">${escapeHtml(t('sourceLoading'))}</div></div></div>`,
   });
+  const body = dialog.querySelector('.dialog__body');
+  try {
+    let media = '';
+    let isImage = false;
+    if (original?.kind === 'image') {
+      isImage = true;
+      media = imageSourceMarkup(sourceUrl(original), original.name, source.boundingBox);
+    } else if (original?.kind === 'pdf') {
+      media = `<iframe title="${escapeAttribute(original.name)}" src="${escapeAttribute(sourceUrl(original))}#page=${source.page}"></iframe>`;
+    } else if (source.sourceAssetId && isRemoteAnalysis()) {
+      const blob = await getRemoteSourcePreview(getSettings().apiBaseUrl, analysis.remoteId, source.sourceAssetId);
+      isImage = true;
+      media = imageSourceMarkup(blobUrl(`remote-source:${source.sourceAssetId}`, blob), t('source'), source.boundingBox);
+    } else {
+      const pageText = analysis.result.pageTexts?.find((entry) => entry.sourceId === original?.id || entry.sourceId === source.sourceId)?.text
+        || analysis.result.sourceText
+        || original?.text
+        || '';
+      media = textSourceMarkup(pageText, source.excerpt);
+    }
+    body.innerHTML = sourcePreviewBody(media, source, isImage && !source.boundingBox);
+    body.querySelector('[data-source-mark]')?.scrollIntoView({ block: 'center' });
+  } catch (error) {
+    body.innerHTML = sourcePreviewBody(`<p>${escapeHtml(t('sourceLoadFailed'))}</p>`, source);
+    showToast({ title: t('errorTitle'), message: error.message || t('sourceLoadFailed'), type: 'error' });
+  }
 }
 
 async function submitClarification(card) {
@@ -521,6 +580,7 @@ function bindEvents() {
   document.querySelectorAll('[data-edit-task]').forEach((button) => button.addEventListener('click', () => editTask(button.dataset.editTask)));
   document.querySelectorAll('[data-source-task]').forEach((button) => button.addEventListener('click', () => showSource(analysis.result.tasks.find((task) => task.id === button.dataset.sourceTask)?.source)));
   document.querySelectorAll('[data-source-data]').forEach((button) => button.addEventListener('click', () => showSource(analysis.result.importantData.find((item) => item.id === button.dataset.sourceData)?.source)));
+  document.querySelectorAll('[data-source-warning]').forEach((button) => button.addEventListener('click', () => showSource(analysis.result.warnings.find((item) => item.id === button.dataset.sourceWarning)?.source)));
   document.querySelectorAll('[data-edit-data]').forEach((button) => button.addEventListener('click', () => editData(button.dataset.editData)));
   document.querySelectorAll('[data-copy-data]').forEach((button) => button.addEventListener('click', async () => { const item = analysis.result.importantData.find((entry) => entry.id === button.dataset.copyData); await copyText(item?.value ?? ''); showToast({ title: t('copied'), type: 'success' }); }));
   document.querySelectorAll('[data-submit-clarification]').forEach((button) => button.addEventListener('click', () => submitClarification(button.closest('[data-clarification-id]'))));
