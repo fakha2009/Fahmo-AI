@@ -31,11 +31,13 @@ function isMessageKey(value) {
 export function normalizeSourceReference(value) {
   if (typeof value === 'string') {
     const page = value.match(/^p\.(\d+)$/u)?.[1];
-    return page ? { sourceId: null, clientPageId: null, sourceAssetId: null, page: Number(page), excerpt: '', boundingBox: null } : null;
+    return page ? { sourceId: null, clientPageId: null, sourceAssetId: null, inputIndex: Number(page) - 1, page: Number(page), excerpt: '', boundingBox: null } : null;
   }
   if (!value || typeof value !== 'object') return null;
   const sourceId = value.sourceId || value.clientPageId || null;
   const sourceAssetId = value.sourceAssetId || value.assetId || null;
+  const inputIndexValue = Number(value.inputIndex ?? Math.max(0, Number(value.pageNumber ?? value.page ?? 1) - 1));
+  const inputIndex = Number.isInteger(inputIndexValue) && inputIndexValue >= 0 ? inputIndexValue : 0;
   const pageValue = Number(value.pageNumber ?? value.page ?? 1);
   const page = Number.isInteger(pageValue) && pageValue > 0 ? pageValue : 1;
   const excerpt = typeof value.excerpt === 'string' ? value.excerpt.trim() : '';
@@ -50,7 +52,7 @@ export function normalizeSourceReference(value) {
       }
     : null;
   if (!sourceId && !sourceAssetId && !excerpt) return null;
-  return { sourceId, clientPageId: value.clientPageId || sourceId, sourceAssetId, page, excerpt, boundingBox };
+  return { sourceId, clientPageId: value.clientPageId || sourceId, sourceAssetId, inputIndex, page, excerpt, boundingBox };
 }
 
 export function normalizeRemoteWarning(item, index) {

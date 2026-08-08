@@ -24,6 +24,7 @@ import { sessionRoute } from "./routes/session";
 import {
   completeTaskRoute,
   createTaskRoute,
+  listTasksRoute,
   deleteTaskRoute,
   listAnalysisTasksRoute,
   patchTaskRoute,
@@ -71,6 +72,7 @@ export class FahmoHttpServer {
     this.router.get("/api/v1/analyses/:analysisId/sources/:sourceId", sourcePreviewRoute);
     this.router.get("/api/v1/public/shares/:token", publicShareRoute);
     this.router.post("/api/v1/tasks", createTaskRoute);
+    this.router.get("/api/v1/tasks", listTasksRoute);
     this.router.patch("/api/v1/tasks/:taskId", patchTaskRoute);
     this.router.post("/api/v1/tasks/:taskId/complete", completeTaskRoute);
     this.router.delete("/api/v1/tasks/:taskId", deleteTaskRoute);

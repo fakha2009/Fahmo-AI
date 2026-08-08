@@ -1,15 +1,28 @@
 import type { AnalysisResult } from "../../../validation/ai/analysis-result";
 import type { SourceReference } from "../../../validation/ai/source-reference";
 
+export interface SourceAssetBinding {
+  id: string;
+  clientPageId: string;
+  inputIndex: number;
+  pageNumber: number;
+}
+
 export function attachSourceAssetIds(
   result: AnalysisResult,
-  assetIdsByClientPageId: ReadonlyMap<string, string>
+  assets: readonly SourceAssetBinding[]
 ): AnalysisResult {
-  const bindRefs = (refs: SourceReference[]): SourceReference[] => refs.map((reference) => ({
-    ...reference,
-    sourceAssetId:
-      reference.sourceAssetId ?? assetIdsByClientPageId.get(reference.clientPageId) ?? null,
-  }));
+  const byClientPageId = new Map(assets.map((asset) => [asset.clientPageId, asset]));
+  const byInputPage = new Map(assets.map((asset) => [`${asset.inputIndex}:${asset.pageNumber}`, asset]));
+  const bindRefs = (refs: SourceReference[]): SourceReference[] => refs.map((reference) => {
+    const asset = byClientPageId.get(reference.clientPageId)
+      ?? byInputPage.get(`${reference.inputIndex}:${reference.pageNumber ?? 1}`);
+    return {
+      ...reference,
+      clientPageId: asset?.clientPageId ?? reference.clientPageId,
+      sourceAssetId: reference.sourceAssetId ?? asset?.id ?? null,
+    };
+  });
 
   return {
     ...result,

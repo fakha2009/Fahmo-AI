@@ -72,6 +72,8 @@ export interface TaskRepository {
   listByAnalysis(analysisId: string): Promise<TaskRecord[]>;
   /** Все задачи владельца, включая удалённые (для экспорта). */
   listByOwner(sessionId: string | null, userId: string | null): Promise<TaskRecord[]>;
+  /** Ограниченная страница активных задач для пользовательского интерфейса. */
+  listActivePageByOwner(sessionId: string | null, userId: string | null, limit: number): Promise<TaskRecord[]>;
   /** Активные (не удалённые) задачи владельца. */
   countByOwner(sessionId: string | null, userId: string | null): Promise<number>;
   update(

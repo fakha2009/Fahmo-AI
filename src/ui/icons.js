@@ -2,6 +2,7 @@ const paths = {
   home: '<path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   filePlus: '<path d="M14 2H6a2 2 0 0 0-2 2v16h16V8z"/><path d="M14 2v6h6M12 11v6M9 14h6"/>',
+  tasks: '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 3V2h6v1M8 9l1.5 1.5L12 8M14 9h2M8 15l1.5 1.5L12 14M14 15h2"/>',
   history: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/>',
   settings: '<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3"/><path d="M1 14h6M9 8h6M17 16h6"/>',
   upload: '<path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 15v5h16v-5"/>',

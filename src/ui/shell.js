@@ -24,6 +24,7 @@ export function renderShell({ title = '', content = '', actions = '', currentPat
         <nav class="nav-list">
           ${navItem('/', t('navHome'), 'home', currentPath)}
           ${navItem('/analyze', t('navAnalyze'), 'filePlus', currentPath)}
+          ${navItem('/tasks', t('navTasks'), 'tasks', currentPath)}
           ${navItem('/history', t('navHistory'), 'history', currentPath)}
           ${navItem('/settings', t('navSettings'), 'settings', currentPath)}
         </nav>
@@ -40,6 +41,7 @@ export function renderShell({ title = '', content = '', actions = '', currentPat
       </main>
       <nav class="mobile-nav" aria-label="Мобильная навигация">
         ${mobileNavItem('/', t('navHome'), 'home', currentPath)}
+        ${mobileNavItem('/tasks', t('navTasks'), 'tasks', currentPath)}
         ${mobileNavItem('/history', t('navHistory'), 'history', currentPath)}
         ${mobileNavItem('/settings', t('navSettings'), 'settings', currentPath)}
       </nav>

@@ -78,6 +78,7 @@ export interface RemoteSourceReference {
   sourceId: string;
   clientPageId: string;
   sourceAssetId: string | null;
+  inputIndex: number;
   page: number;
   pageNumber: number | null;
   excerpt: string | null;
@@ -248,6 +249,7 @@ function mapSourceReference(reference: SourceReference | undefined): RemoteSourc
     sourceId: reference.clientPageId,
     clientPageId: reference.clientPageId,
     sourceAssetId: reference.sourceAssetId,
+    inputIndex: reference.inputIndex,
     page: reference.pageNumber ?? 1,
     pageNumber: reference.pageNumber,
     excerpt: reference.excerpt,

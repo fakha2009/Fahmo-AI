@@ -67,6 +67,12 @@ class InMemoryTaskRepository implements TaskRepository {
     );
   }
 
+  async listActivePageByOwner(sessionId: string | null, userId: string | null, limit: number): Promise<TaskRecord[]> {
+    return (await this.listByOwner(sessionId, userId))
+      .filter((record) => record.deletedAt === null)
+      .slice(0, limit);
+  }
+
   async update(
     id: string,
     expectedRevision: number,

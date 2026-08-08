@@ -63,6 +63,64 @@ test('local example completes the document-to-plan flow', async ({ page }) => {
   await expect(page.locator('.source-quote')).toContainText(/Необходимо заполнить/u);
 });
 
+test.describe('device task persistence', () => {
+test.use({ serviceWorkers: 'block' });
+
+test('tasks can be created, edited, completed, and restored on this device', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', (error) => pageErrors.push(error.message));
+  await page.route('**/config.js', (route) => route.fulfill({
+    contentType: 'text/javascript',
+    body: `window.__FAHMO_CONFIG__ = Object.freeze({ apiBaseUrl: '', apiPrefix: '/api/v1', apiMode: 'local', environment: 'test', allowApiSettings: true, appVersion: '1.1.0' });`,
+  }));
+  await page.goto('/tasks');
+  await expect(page.getByRole('heading', { name: 'Задачи', exact: true })).toBeVisible();
+  await expect(page.locator('.mobile-nav__link')).toHaveCount(4);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)).toBe(false);
+  await page.getByRole('button', { name: /Добавить задачу/u }).first().click();
+  const dialog = page.getByRole('dialog', { name: 'Новая задача' });
+  await page.waitForTimeout(100);
+  expect(pageErrors).toEqual([]);
+  await expect(dialog).toBeVisible();
+  await dialog.getByLabel('Название').fill('Подготовить презентацию');
+  await dialog.getByLabel('Описание').fill('Собрать финальные слайды для встречи');
+  await dialog.getByLabel('Дата').fill('2099-08-20');
+  await dialog.getByLabel('Время').fill('10:30');
+  await dialog.getByLabel('Приоритет').selectOption('high');
+  await dialog.getByLabel('Напомнить заранее').selectOption('10');
+  await dialog.getByRole('button', { name: 'Добавить задачу' }).click();
+  await expect(page.getByText('Подготовить презентацию', { exact: true })).toBeVisible();
+  await expect(dialog).not.toBeVisible();
+
+  await page.evaluate(async () => {
+    const { dbPut } = await import('/src/core/db.js');
+    await dbPut('device', { id: 'test-device', token: 'private-token' });
+  });
+  await page.reload();
+  await expect(page.getByText('Подготовить презентацию', { exact: true })).toBeVisible();
+  const persisted = await page.evaluate(async () => {
+    const { dbGet, exportDatabase } = await import('/src/core/db.js');
+    const device = await dbGet('device', 'test-device');
+    const exported = await exportDatabase();
+    return { token: device?.token, deviceExported: Object.hasOwn(exported.data, 'device') };
+  });
+  expect(persisted).toEqual({ token: 'private-token', deviceExported: false });
+
+  const task = page.locator('[data-task-id]').filter({ hasText: 'Подготовить презентацию' });
+  await task.getByRole('button', { name: 'Редактировать задачу' }).click();
+  const editDialog = page.getByRole('dialog', { name: 'Редактировать задачу' });
+  await editDialog.getByLabel('Название').fill('Подготовить финальную презентацию');
+  await editDialog.getByRole('button', { name: 'Сохранить изменения' }).click();
+  await expect(page.getByText('Подготовить финальную презентацию', { exact: true })).toBeVisible();
+  await page.locator('[data-task-id]').filter({ hasText: 'Подготовить финальную презентацию' }).getByRole('checkbox').click();
+  await page.getByRole('button', { name: 'Выполненные', exact: true }).click();
+  await expect(page.getByText('Подготовить финальную презентацию', { exact: true })).toBeVisible();
+  await page.reload();
+  await page.getByRole('button', { name: 'Выполненные', exact: true }).click();
+  await expect(page.getByText('Подготовить финальную презентацию', { exact: true })).toBeVisible();
+});
+});
+
 test('production remote analysis reaches a server result with a durable source', async ({ page }, testInfo) => {
   test.skip(process.env.PLAYWRIGHT_REMOTE_FLOW !== '1', 'Runs only against the deployed production stack');
   test.skip(testInfo.project.name !== 'desktop-chrome', 'Production AI flow runs once');

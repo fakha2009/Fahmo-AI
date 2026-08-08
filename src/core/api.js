@@ -1,8 +1,28 @@
 import { wait } from './utils.js';
+import { dbGet, dbPut } from './db.js';
 
 const runtimeConfig = globalThis.__FAHMO_CONFIG__ ?? {};
 const DEFAULT_PREFIX = normalizeApiPrefix(runtimeConfig.apiPrefix ?? '/api/v1');
 const SESSION_TOKEN_KEY = 'fahmo:api-session';
+const SESSION_RECORD_ID = 'api-session';
+let persistedSessionToken;
+let sessionBootstrapPromise;
+
+async function getSessionToken() {
+  if (persistedSessionToken !== undefined) return persistedSessionToken;
+  const legacy = sessionStorage.getItem(SESSION_TOKEN_KEY);
+  const record = await dbGet('device', SESSION_RECORD_ID).catch(() => null);
+  persistedSessionToken = typeof record?.token === 'string' ? record.token : legacy;
+  if (legacy && !record?.token) await dbPut('device', { id: SESSION_RECORD_ID, token: legacy, updatedAt: new Date().toISOString() });
+  sessionStorage.removeItem(SESSION_TOKEN_KEY);
+  return persistedSessionToken;
+}
+
+async function persistSessionToken(token) {
+  if (!token || token === persistedSessionToken) return;
+  persistedSessionToken = token;
+  await dbPut('device', { id: SESSION_RECORD_ID, token, updatedAt: new Date().toISOString() });
+}
 
 export class ApiError extends Error {
   constructor(message, options = {}) {
@@ -50,7 +70,7 @@ export class HttpFahmoApiClient {
     const headers = new Headers(options.headers ?? {});
     headers.set('Accept', options.accept ?? 'application/json');
     headers.set('X-Request-ID', requestId);
-    const sessionToken = sessionStorage.getItem(SESSION_TOKEN_KEY);
+    const sessionToken = await getSessionToken();
     if (sessionToken) headers.set('X-Session-Token', sessionToken);
     if (options.idempotencyKey) headers.set('Idempotency-Key', options.idempotencyKey);
     if (options.body && !(options.body instanceof FormData) && !headers.has('Content-Type')) {
@@ -75,7 +95,7 @@ export class HttpFahmoApiClient {
           cache: 'no-store',
         });
         const receivedSessionToken = response.headers.get('x-session-token');
-        if (receivedSessionToken) sessionStorage.setItem(SESSION_TOKEN_KEY, receivedSessionToken);
+        if (receivedSessionToken) await persistSessionToken(receivedSessionToken);
         if (options.responseType === 'blob' && response.ok) return await response.blob();
         const contentType = response.headers.get('content-type') ?? '';
         const payload = contentType.includes('application/json')
@@ -125,8 +145,13 @@ export function fahmoApiClient(baseUrl) {
   return new HttpFahmoApiClient({ baseUrl, prefix: runtimeConfig.apiPrefix ?? DEFAULT_PREFIX });
 }
 
-export function ensureRemoteSession(baseUrl, signal) {
-  return fahmoApiClient(baseUrl).request('/session', { signal, retries: 1 });
+export async function ensureRemoteSession(baseUrl, signal) {
+  if (await getSessionToken()) return { status: 'active' };
+  if (!sessionBootstrapPromise) {
+    sessionBootstrapPromise = fahmoApiClient(baseUrl).request('/session', { signal, retries: 1 })
+      .finally(() => { sessionBootstrapPromise = null; });
+  }
+  return sessionBootstrapPromise;
 }
 
 export function textUploadFilename(name) {
@@ -170,6 +195,21 @@ export function deleteRemoteAnalysis(baseUrl, remoteId, signal) {
   return fahmoApiClient(baseUrl).request(`/analyses/${encodeURIComponent(remoteId)}`, { method: 'DELETE', signal });
 }
 
+export async function listRemoteTasks(baseUrl, signal, limit = 100) {
+  await ensureRemoteSession(baseUrl, signal);
+  return fahmoApiClient(baseUrl).request(`/tasks?limit=${Math.min(Math.max(limit, 1), 100)}`, { signal, retries: 1 });
+}
+
+export async function createRemoteTask(baseUrl, input, signal) {
+  await ensureRemoteSession(baseUrl, signal);
+  return fahmoApiClient(baseUrl).request('/tasks', {
+    method: 'POST',
+    body: input,
+    idempotencyKey: input.idempotencyKey ?? input.clientMutationId,
+    signal,
+  });
+}
+
 export function cancelRemoteAnalysis(baseUrl, remoteId, idempotencyKey, signal) {
   return fahmoApiClient(baseUrl).request(`/analyses/${encodeURIComponent(remoteId)}/cancel`, {
     method: 'POST', idempotencyKey, signal,
@@ -188,9 +228,27 @@ export function completeRemoteTask(baseUrl, taskId, revision, signal) {
   });
 }
 
+export function deleteRemoteTask(baseUrl, taskId, revision, signal) {
+  return fahmoApiClient(baseUrl).request(`/tasks/${encodeURIComponent(taskId)}`, {
+    method: 'DELETE', headers: { 'If-Match': `revision-${revision}` }, body: { expectedRevision: revision }, signal,
+  });
+}
+
 export function createRemoteReminder(baseUrl, taskId, input, signal) {
   return fahmoApiClient(baseUrl).request(`/tasks/${encodeURIComponent(taskId)}/reminders`, {
     method: 'POST', body: input, idempotencyKey: input.idempotencyKey, signal,
+  });
+}
+
+export function patchRemoteReminder(baseUrl, reminderId, revision, patch, signal) {
+  return fahmoApiClient(baseUrl).request(`/reminders/${encodeURIComponent(reminderId)}`, {
+    method: 'PATCH', body: { ...patch, expectedRevision: revision }, signal,
+  });
+}
+
+export function deleteRemoteReminder(baseUrl, reminderId, revision, signal) {
+  return fahmoApiClient(baseUrl).request(`/reminders/${encodeURIComponent(reminderId)}`, {
+    method: 'DELETE', body: { expectedRevision: revision }, signal,
   });
 }
 

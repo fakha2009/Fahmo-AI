@@ -71,6 +71,24 @@ export class PrismaTaskRepository implements TaskRepository {
     return rows.map(taskToRecord);
   }
 
+  async listActivePageByOwner(
+    sessionId: string | null,
+    userId: string | null,
+    limit: number
+  ): Promise<TaskRecord[]> {
+    const owner = sessionId !== null
+      ? { session_id: sessionId }
+      : userId !== null
+        ? { user_id: userId }
+        : { id: "__no_owner__" };
+    const rows = await prisma.task.findMany({
+      where: { ...owner, deleted_at: null },
+      orderBy: [{ status: "asc" }, { due_at: "asc" }, { created_at: "desc" }],
+      take: Math.min(Math.max(limit, 1), 100),
+    });
+    return rows.map(taskToRecord);
+  }
+
   async update(
     id: string,
     expectedRevision: number,

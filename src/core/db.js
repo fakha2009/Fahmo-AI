@@ -1,6 +1,7 @@
 const DB_NAME = 'fahmo-ai';
-const DB_VERSION = 1;
-const STORES = ['analyses', 'drafts', 'settings', 'shares'];
+const DB_VERSION = 2;
+const STORES = ['analyses', 'drafts', 'settings', 'shares', 'tasks', 'device'];
+const EXPORTABLE_STORES = STORES.filter((store) => store !== 'device');
 
 let databasePromise;
 
@@ -73,7 +74,7 @@ export async function dbClear(storeName) {
 
 export async function exportDatabase() {
   const result = {};
-  for (const store of STORES) result[store] = await dbGetAll(store);
+  for (const store of EXPORTABLE_STORES) result[store] = await dbGetAll(store);
   return {
     schemaVersion: DB_VERSION,
     exportedAt: new Date().toISOString(),

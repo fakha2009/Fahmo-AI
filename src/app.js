@@ -9,12 +9,15 @@ import { historyPage } from './pages/history.js';
 import { settingsPage } from './pages/settings.js';
 import { installPage, notFoundPage, offlinePage, sharedPage } from './pages/misc.js';
 import { showToast } from './ui/toast.js';
+import { startReminderScheduler } from './core/reminder-scheduler.js';
+import { tasksPage } from './pages/tasks.js';
 
 registerRoute('/', homePage);
 registerRoute('/analyze', analyzePage);
 registerRoute('/analyze/:analysisId', processPage);
 registerRoute('/result/:analysisId', resultPage);
 registerRoute('/history', historyPage);
+registerRoute('/tasks', tasksPage);
 registerRoute('/settings', settingsPage);
 registerRoute('/offline', offlinePage);
 registerRoute('/install', installPage);
@@ -43,6 +46,13 @@ window.addEventListener('error', (event) => {
 });
 window.addEventListener('unhandledrejection', (event) => {
   console.error(event.reason);
+});
+
+navigator.serviceWorker?.addEventListener?.('message', (event) => {
+  if (event.data?.type === 'NAVIGATE' && typeof event.data.url === 'string') {
+    history.pushState({}, '', event.data.url);
+    renderRoute();
+  }
 });
 
 async function registerServiceWorker() {
@@ -83,3 +93,4 @@ function showUpdate(registration) {
 await loadSettings();
 await initRouter();
 registerServiceWorker();
+startReminderScheduler();

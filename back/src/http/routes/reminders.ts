@@ -65,7 +65,7 @@ function owner(sessionId: string) {
   return { sessionId, userId: null };
 }
 
-function reminderToResponse(reminder: ReminderRecord) {
+export function reminderToResponse(reminder: ReminderRecord) {
   return {
     id: reminder.id,
     taskId: reminder.taskId,

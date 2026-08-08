@@ -16,7 +16,12 @@ let mode = 'standard';
 const objectUrls = new Map();
 
 function sourceById(id) { return analysis.sources?.find((source) => source.id === id); }
-function pageByClientId(id) { return analysis.pages?.find((page) => page.id === id); }
+function pageBySource(source) {
+  return analysis.pages?.find((page) => page.id === source.clientPageId || page.id === source.sourceId)
+    ?? analysis.pages?.find((page) => page.order === source.inputIndex || page.order === source.page - 1)
+    ?? analysis.pages?.[source.inputIndex]
+    ?? analysis.pages?.[source.page - 1];
+}
 function sourceUrl(source) {
   if (!source?.blob) return '';
   if (!objectUrls.has(source.id)) objectUrls.set(source.id, URL.createObjectURL(source.blob));
@@ -342,7 +347,7 @@ async function showSource(value) {
     showToast({ title: t('source'), message: t('sourceUnavailable'), type: 'info' });
     return;
   }
-  const page = pageByClientId(source.clientPageId || source.sourceId);
+  const page = pageBySource(source);
   const original = sourceById(page?.sourceId || source.sourceId);
   const { dialog } = openDialog({
     id: 'source-dialog',

@@ -20,6 +20,17 @@ export async function listAnalyses() {
 }
 export function deleteAnalysis(id) { return dbDelete('analyses', id); }
 
+export async function saveLocalTask(task) {
+  const value = { ...task, updatedAt: new Date().toISOString() };
+  await dbPut('tasks', value);
+  return value;
+}
+export async function listLocalTasks() {
+  const items = await dbGetAll('tasks');
+  return items.sort((a, b) => new Date(a.dueAt ?? a.createdAt).getTime() - new Date(b.dueAt ?? b.createdAt).getTime());
+}
+export function deleteLocalTask(id) { return dbDelete('tasks', id); }
+
 export async function saveShare(share) {
   const value = { ...share, updatedAt: new Date().toISOString() };
   await dbPut('shares', value);

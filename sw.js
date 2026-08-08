@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'fahmo-ai-v1.3.0';
+const CACHE_VERSION = 'fahmo-ai-v1.4.0';
 const APP_SHELL = [
   '/',
   '/index.html',
@@ -20,6 +20,7 @@ const APP_SHELL = [
   '/src/core/db.js',
   '/src/core/i18n.js',
   '/src/core/repository.js',
+  '/src/core/reminder-scheduler.js',
   '/src/core/router.js',
   '/src/core/settings.js',
   '/src/core/utils.js',
@@ -34,6 +35,7 @@ const APP_SHELL = [
   '/src/pages/process.js',
   '/src/pages/result.js',
   '/src/pages/settings.js',
+  '/src/pages/tasks.js',
   '/src/theme-init.js',
   '/src/ui/dialogs.js',
   '/src/ui/icons.js',
@@ -72,6 +74,22 @@ self.addEventListener('message', (event) => {
   if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const target = event.notification.data?.url ?? '/tasks';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async (clients) => {
+      const existing = clients.find((client) => new URL(client.url).origin === self.location.origin);
+      if (existing) {
+        await existing.focus();
+        existing.postMessage({ type: 'NAVIGATE', url: target });
+        return;
+      }
+      await self.clients.openWindow(target);
+    })
+  );
+});
+
 self.addEventListener('fetch', (event) => {
   const request = event.request;
   if (request.method !== 'GET') return;
@@ -82,6 +100,19 @@ self.addEventListener('fetch', (event) => {
     const clone = response.clone();
     return caches.open(CACHE_VERSION).then((cache) => cache.put(requestToCache, clone));
   };
+
+  // Runtime API routing must refresh before cached application modules use it.
+  if (url.pathname === '/config.js') {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (response.ok) event.waitUntil(cacheResponse(request, response));
+          return response;
+        })
+        .catch(async () => (await caches.match(request)) ?? unavailableResponse(request))
+    );
+    return;
+  }
 
   // API responses can contain private document data and must never be stored in Cache Storage.
   if (url.pathname.startsWith('/v1/') || url.pathname.startsWith('/api/')) {

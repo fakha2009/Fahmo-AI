@@ -6,8 +6,29 @@ import { readJsonBody } from "../body";
 import type { RouteHandler } from "../router";
 import { sendJson, sendNoContent } from "../responses";
 import { requireSession } from "../session";
+import { reminderToResponse } from "./reminders";
 
 const RevisionBodySchema = z.object({ expectedRevision: z.number().int().min(1) }).strict();
+
+export const listTasksRoute: RouteHandler = async ({ req, res, ctx, rc }) => {
+  const session = await requireSession(ctx.sessions, rc);
+  const requestedLimit = Number(new URL(req.url ?? "/", "http://localhost").searchParams.get("limit") ?? 100);
+  const limit = Number.isInteger(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 100) : 100;
+  const tasks = await ctx.taskRepository.listActivePageByOwner(session.session.id, null, limit);
+  const reminders = await ctx.reminderRepository.listByTaskIds(tasks.map((task) => task.id));
+  const byTask = new Map<string, ReturnType<typeof reminderToResponse>[]>();
+  for (const reminder of reminders) {
+    if (reminder.status === "cancelled") continue;
+    const items = byTask.get(reminder.taskId) ?? [];
+    items.push(reminderToResponse(reminder));
+    byTask.set(reminder.taskId, items);
+  }
+  sendJson({
+    res,
+    rc,
+    body: { items: tasks.map((task) => ({ ...taskToResponse(task), reminders: byTask.get(task.id) ?? [] })) },
+  });
+};
 
 export const listAnalysisTasksRoute: RouteHandler = async ({ res, ctx, rc, params }) => {
   const session = await requireSession(ctx.sessions, rc);

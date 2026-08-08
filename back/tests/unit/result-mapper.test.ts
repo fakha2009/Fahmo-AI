@@ -79,15 +79,17 @@ function record(result: AnalysisResult): AnalysisRecord {
 }
 
 test("source assets are attached to every returned source reference", () => {
-  const attached = attachSourceAssetIds(analysisResult(), new Map([["page-1", "asset-1"]]));
+  const assets = [{ id: "asset-1", clientPageId: "page-0", inputIndex: 0, pageNumber: 1 }];
+  const attached = attachSourceAssetIds(analysisResult(), assets);
   assert.equal(attached.tasks[0]?.sourceRefs[0]?.sourceAssetId, "asset-1");
+  assert.equal(attached.tasks[0]?.sourceRefs[0]?.clientPageId, "page-0");
   assert.equal(attached.dates[0]?.sourceRefs[0]?.sourceAssetId, "asset-1");
   assert.equal(attached.requiredDocuments[0]?.sourceRefs[0]?.sourceAssetId, "asset-1");
   assert.equal(attached.warnings[0]?.sourceRefs[0]?.sourceAssetId, "asset-1");
 });
 
 test("result mapper keeps actionable important data and complete source coordinates", () => {
-  const attached = attachSourceAssetIds(analysisResult(), new Map([["page-1", "asset-1"]]));
+  const attached = attachSourceAssetIds(analysisResult(), [{ id: "asset-1", clientPageId: "page-0", inputIndex: 0, pageNumber: 1 }]);
   const mapped = mapAnalysisResult(record(attached));
   assert.ok(mapped !== null);
   assert.deepEqual(mapped.importantData.map((item) => item.type).sort(), ["deadline", "document"]);

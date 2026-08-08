@@ -126,6 +126,9 @@ class FakeTaskRepository implements TaskRepository {
   async listByOwner(): Promise<never> {
     throw new Error("not implemented");
   }
+  async listActivePageByOwner(): Promise<never> {
+    throw new Error("not implemented");
+  }
   async get(id: string): Promise<TaskRecord | null> {
     return this.tasks.find((task) => task.id === id) ?? null;
   }

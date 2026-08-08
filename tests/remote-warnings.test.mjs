@@ -51,6 +51,7 @@ test('remote source references preserve page, preview asset, excerpt, and highli
     sourceId: 'client-page-1',
     clientPageId: 'client-page-1',
     sourceAssetId: 'asset-1',
+    inputIndex: 1,
     page: 2,
     excerpt: 'Важный фрагмент',
     boundingBox: { x: 0.1, y: 0.2, width: 0.3, height: 0.1 },
