@@ -29,6 +29,7 @@
   "dependencies": {
     "@prisma/adapter-pg": "^7.0.0",
     "@prisma/client": "^7.0.0",
+    "dejavu-fonts-ttf": "2.37.3",
     "dotenv": "^17.4.2",
     "fontkit": "^2.0.4",
     "pdf-lib": "^1.17.1",

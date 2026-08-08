@@ -1,11 +1,28 @@
 import { existsSync, readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 
 interface FontPair {
   regular: string;
   bold: string | null;
 }
 
+const require = createRequire(import.meta.url);
+
+function bundledFont(modulePath: string): string | null {
+  try {
+    return require.resolve(modulePath);
+  } catch {
+    return null;
+  }
+}
+
+const bundledRegular = bundledFont("dejavu-fonts-ttf/ttf/DejaVuSans.ttf");
+const bundledBold = bundledFont("dejavu-fonts-ttf/ttf/DejaVuSans-Bold.ttf");
+
 const CANDIDATES: FontPair[] = [
+  // Deterministic production font: Latin, Russian and Tajik glyphs are bundled
+  // with the backend instead of depending on the Railway base image.
+  ...(bundledRegular === null ? [] : [{ regular: bundledRegular, bold: bundledBold }]),
   // Windows
   { regular: "C:\\Windows\\Fonts\\arial.ttf", bold: "C:\\Windows\\Fonts\\arialbd.ttf" },
   { regular: "C:\\Windows\\Fonts\\segoeui.ttf", bold: "C:\\Windows\\Fonts\\segoeuib.ttf" },
@@ -22,7 +39,7 @@ const CANDIDATES: FontPair[] = [
 ];
 
 export interface ResolvedFont {
-  /** TTF-байты для встраивания (pdf-lib) или null → стандартный шрифт. */
+  /** TTF/WOFF-байты для встраивания (pdf-lib) или null → стандартный шрифт. */
   regularBytes: Uint8Array | null;
   boldBytes: Uint8Array | null;
   /** Имя для диагностики. */
@@ -45,7 +62,7 @@ function loadFont(path: string): Uint8Array | null {
 }
 
 /**
- * Находит системный TrueType-шрифт с поддержкой кириллицы/таджикского
+ * Находит bundled или системный шрифт с поддержкой кириллицы/таджикского
  * для встраивания в PDF. Результат кешируется.
  */
 export class FontResolver {

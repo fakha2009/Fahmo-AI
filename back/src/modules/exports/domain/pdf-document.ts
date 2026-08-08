@@ -371,7 +371,7 @@ class PageWriter {
 /**
  * Стандартные шрифты PDF (WinAnsi) не содержат кириллицы: заменяем
  * символы вне Latin-1 на «?», чтобы рендер не падал без системного TTF.
- * Встраивание TTF (FontResolver) полностью сохраняет кириллицу/таджикский.
+ * Встраивание TTF/WOFF (FontResolver) полностью сохраняет кириллицу/таджикский.
  */
 function sanitizeForStandardFont(text: string): string {
   return text.replace(/[^\x20-\x7E\xA0-\xFF]/g, "?");

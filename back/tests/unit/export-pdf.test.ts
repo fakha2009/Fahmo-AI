@@ -68,6 +68,20 @@ test("PdfExportRenderer: со встроенным TTF сохраняется к
   assert.ok(text.includes("оригинальный документ не включён"));
 });
 
+test("PdfExportRenderer: bundled font сохраняет специальные таджикские буквы", async () => {
+  const { FontResolver } = await import("../../src/modules/exports/domain/font-resolver");
+  const resolved = new FontResolver().resolve();
+  assert.match(resolved.name, /dejavu-fonts-ttf/u);
+  assert.ok(resolved.regularBytes !== null);
+  const data = sampleData();
+  data.simpleExplanation = "Ҳуҷҷати тоҷикӣ: ғ, қ, ҳ, ҷ, ӣ, ӯ.";
+  const pdf = await new PdfExportRenderer().render(data, {
+    fontBytes: resolved.regularBytes,
+    boldFontBytes: resolved.boldBytes,
+  });
+  assert.ok(extractPdfText(pdf).includes(data.simpleExplanation));
+});
+
 test("PdfExportRenderer: пустые секции показывают заглушки", async () => {
   const font = await resolveFont();
   if (font === null) {
