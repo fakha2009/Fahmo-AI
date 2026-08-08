@@ -1,5 +1,6 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
+import { inflateSync } from "node:zlib";
 import { PDFDocument } from "pdf-lib";
 import {
   PdfExportRenderer,
@@ -68,6 +69,29 @@ test("PdfExportRenderer: со встроенным TTF сохраняется к
   assert.ok(text.includes("оригинальный документ не включён"));
 });
 
+test("PdfExportRenderer: каждый текстовый блок получает собственную строку без наложения", async () => {
+  const font = await resolveFont();
+  if (font === null) {
+    return;
+  }
+  const renderer = new PdfExportRenderer();
+  const pdf = await renderer.render(sampleData(), { fontBytes: font, boldFontBytes: font });
+  const pages = extractPageBaselines(pdf);
+
+  assert.ok(pages.length >= 1);
+  for (const baselines of pages) {
+    for (let index = 1; index < baselines.length; index += 1) {
+      const previous = baselines[index - 1];
+      const current = baselines[index];
+      assert.ok(previous !== undefined && current !== undefined);
+      assert.ok(
+        previous - current >= 12,
+        `text baselines overlap: ${previous} -> ${current}`
+      );
+    }
+  }
+});
+
 test("PdfExportRenderer: bundled font сохраняет специальные таджикские буквы", async () => {
   const { FontResolver } = await import("../../src/modules/exports/domain/font-resolver");
   const resolved = new FontResolver().resolve();
@@ -115,4 +139,28 @@ async function resolveFont(): Promise<Uint8Array | null> {
   const { FontResolver } = await import("../../src/modules/exports/domain/font-resolver");
   const resolved = new FontResolver().resolve();
   return resolved.regularBytes;
+}
+
+function extractPageBaselines(pdfBytes: Uint8Array): number[][] {
+  const source = Buffer.from(pdfBytes).toString("latin1");
+  const pages: number[][] = [];
+  const streamPattern = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
+  let streamMatch: RegExpExecArray | null;
+  while ((streamMatch = streamPattern.exec(source)) !== null) {
+    const encoded = Buffer.from(streamMatch[1] ?? "", "latin1");
+    let content: string;
+    try {
+      content = inflateSync(encoded).toString("latin1");
+    } catch {
+      content = encoded.toString("latin1");
+    }
+    if (!/^q\b/.test(content) || !content.includes("BT")) {
+      continue;
+    }
+    const baselines = [...content.matchAll(/1 0 0 1 48 ([\d.]+) Tm/g)].map((match) => Number(match[1]));
+    if (baselines.length > 0) {
+      pages.push(baselines);
+    }
+  }
+  return pages;
 }

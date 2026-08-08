@@ -199,87 +199,78 @@ class PageWriter {
 
   drawTitle(title: string): void {
     this.ensureSpace(40);
-    this.drawText(title, 17, true);
+    this.drawWrappedText(title, 17, true, dark, 22);
     this.y -= 6;
   }
 
   drawMeta(data: PdfExportData): void {
-    this.drawText(
+    this.drawWrappedText(
       `${label("documentType")}: ${data.documentType} · ${label("confidence")}: ${data.overallConfidence} · ${data.outputLanguage.toUpperCase()}`,
       9,
       false,
-      dim
+      dim,
+      13
     );
     this.y -= 4;
   }
 
   drawDisclaimer(): void {
-    this.drawText(`${label("createdBy")} · ${label("disclaimer")}`, 9, false, dim);
+    this.drawWrappedText(`${label("createdBy")} · ${label("disclaimer")}`, 9, false, dim, 13);
     this.y -= SECTION_GAP;
   }
 
   drawSection(label: string): void {
-    this.ensureSpace(30);
-    this.drawText(label, 13, true, accent);
+    // Keep enough room for the heading and at least one following text line.
+    this.ensureSpace(42);
+    this.drawWrappedText(label, 13, true, accent, 18);
     this.y -= 4;
   }
 
   drawParagraph(text: string): void {
-    for (const line of this.wrap(text, 10.5)) {
-      this.ensureSpace(LINE_HEIGHT);
-      this.drawText(line, 10.5, false);
-      this.y -= LINE_HEIGHT;
-    }
+    this.drawWrappedText(text, 10.5, false, dark, LINE_HEIGHT);
     this.y -= PARAGRAPH_GAP;
   }
 
   drawTask(task: PdfTaskRow): void {
     this.ensureSpace(60);
-    this.drawText(task.title, 11, true);
+    this.drawWrappedText(task.title, 11, true, dark, 16);
     this.y -= 2;
     const status = statusLabel(task.status);
     const due = task.dueAt === null ? "" : `${label("due")}: ${formatIso(task.dueAt)}`;
     const prio = `${label("priority")}: ${task.priority}`;
     const meta = [status, due, prio].filter(Boolean).join(" · ");
     if (meta.length > 0) {
-      this.drawText(meta, 9, false, dim);
+      this.drawWrappedText(meta, 9, false, dim, 13);
       this.y -= 2;
     }
     if (task.description !== null && task.description.length > 0) {
-      for (const line of this.wrap(task.description, 9.5)) {
-        this.ensureSpace(LINE_HEIGHT);
-        this.drawText(line, 9.5, false);
-        this.y -= LINE_HEIGHT;
-      }
+      this.drawWrappedText(task.description, 9.5, false, dark, 14);
     }
     this.y -= PARAGRAPH_GAP;
   }
 
   drawImportantData(item: PdfImportantDataRow): void {
     this.ensureSpace(45);
-    for (const line of this.wrap(`${item.label}: ${item.value}`, 10.5)) {
-      this.ensureSpace(LINE_HEIGHT);
-      this.drawText(line, 10.5, true);
-      this.y -= LINE_HEIGHT;
-    }
+    this.drawWrappedText(`${item.label}: ${item.value}`, 10.5, true, dark, LINE_HEIGHT);
     const source = [
       item.sourcePage === null ? "" : `${label("source")}: стр. ${item.sourcePage}`,
       item.sourceExcerpt ?? "",
     ].filter(Boolean).join(" · ");
     if (source !== "") {
-      for (const line of this.wrap(source, 8.5)) {
-        this.ensureSpace(LINE_HEIGHT);
-        this.drawText(line, 8.5, false, dim);
-        this.y -= LINE_HEIGHT;
-      }
+      this.drawWrappedText(source, 8.5, false, dim, 13);
     }
     this.y -= PARAGRAPH_GAP;
   }
 
   drawWarning(warning: PdfWarningRow): void {
     this.ensureSpace(30);
-    this.drawText(`[${warning.severity}] ${warning.message}`, 10, warning.severity === "critical");
-    this.y -= LINE_HEIGHT;
+    this.drawWrappedText(
+      `[${warning.severity}] ${warning.message}`,
+      10,
+      warning.severity === "critical",
+      dark,
+      LINE_HEIGHT
+    );
     this.y -= PARAGRAPH_GAP;
   }
 
@@ -287,82 +278,94 @@ class PageWriter {
     this.ensureSpace(50);
     const fields = humanizeChangedFields(edit.changedFields);
     const fieldsText = fields === "" ? "" : ` · ${label("changedFields")}: ${fields}`;
-    this.drawText(
+    this.drawWrappedText(
       `${label("version")} ${edit.version} (${edit.changeSource}, ${formatIso(edit.createdAt)})${fieldsText}`,
       10,
-      true
+      true,
+      dark,
+      LINE_HEIGHT
     );
-    this.y -= LINE_HEIGHT + PARAGRAPH_GAP;
+    this.y -= PARAGRAPH_GAP;
   }
 
   drawFooter(analysisId: string): void {
     const text = `Fahmo AI · analysis ${analysisId}`;
     this.ensureSpace(20);
-    this.drawText(text, 8, false, dim);
+    this.drawWrappedText(text, 8, false, dim, 12);
   }
 
-  private drawText(text: string, size: number, bold: boolean, color = dark): void {
-    const safe = this.safeText(text);
-    this.page().drawText(safe, {
-      x: MARGIN,
-      y: this.y,
-      size,
-      font: bold ? this.boldFont : this.font,
-      color,
-      maxWidth: CONTENT_WIDTH,
-      lineHeight: size + 4,
-    });
+  private drawWrappedText(
+    text: string,
+    size: number,
+    bold: boolean,
+    color = dark,
+    lineHeight = size + 4
+  ): void {
+    const selectedFont = bold ? this.boldFont : this.font;
+    for (const line of this.wrap(text, size, selectedFont)) {
+      this.ensureSpace(lineHeight);
+      this.page().drawText(line, {
+        x: MARGIN,
+        y: this.y,
+        size,
+        font: selectedFont,
+        color,
+      });
+      this.y -= lineHeight;
+    }
   }
 
   private safeText(text: string): string {
     return this.isStandardFont ? sanitizeForStandardFont(text) : text;
   }
 
-  private wrap(text: string, size: number): string[] {
+  private wrap(text: string, size: number, font: PDFFont): string[] {
     const maxWidth = CONTENT_WIDTH;
-    const words = this.safeText(text).split(/\s+/);
     const lines: string[] = [];
-    let current = "";
-    const push = (word: string): void => {
-      if (this.font.widthOfTextAtSize(word, size) <= maxWidth) {
-        if (current === "") {
-          current = word;
-        } else {
-          lines.push(current);
-          current = word;
+    for (const paragraph of this.safeText(text).split(/\r?\n/)) {
+      const words = paragraph.trim().split(/\s+/).filter(Boolean);
+      let current = "";
+      const push = (word: string): void => {
+        if (font.widthOfTextAtSize(word, size) <= maxWidth) {
+          if (current === "") {
+            current = word;
+          } else {
+            lines.push(current);
+            current = word;
+          }
+          return;
         }
-        return;
+        if (current !== "") {
+          lines.push(current);
+          current = "";
+        }
+        let part = "";
+        for (const char of word) {
+          const candidate = part + char;
+          if (font.widthOfTextAtSize(candidate, size) <= maxWidth) {
+            part = candidate;
+          } else {
+            if (part !== "") {
+              lines.push(part);
+            }
+            part = char;
+          }
+        }
+        if (part !== "") {
+          lines.push(part);
+        }
+      };
+      for (const word of words) {
+        const candidate = current === "" ? word : `${current} ${word}`;
+        if (font.widthOfTextAtSize(candidate, size) <= maxWidth) {
+          current = candidate;
+        } else {
+          push(word);
+        }
       }
       if (current !== "") {
         lines.push(current);
-        current = "";
       }
-      let part = "";
-      for (const char of word) {
-        const candidate = part + char;
-        if (this.font.widthOfTextAtSize(candidate, size) <= maxWidth) {
-          part = candidate;
-        } else {
-          if (part !== "") {
-            lines.push(part);
-          }
-          part = char;
-        }
-      }
-      if (part !== "") {
-        lines.push(part);
-      }
-    };
-    for (const word of words) {
-      const candidate = current === "" ? word : `${current} ${word}`;
-      if (this.font.widthOfTextAtSize(candidate, size) <= maxWidth) {
-        current = candidate;
-      } else {
-        push(word);
-      }
-    }
-    if (current !== "") {
-      lines.push(current);
     }
     return lines;
   }
