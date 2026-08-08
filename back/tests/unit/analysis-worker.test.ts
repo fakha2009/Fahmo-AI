@@ -24,6 +24,8 @@ class FakeAnalysisRepository implements AnalysisRepository {
       sourceType: "text",
       documentType: "other",
       outputLanguage: "ru",
+      retentionMode: "temporary",
+      sourcePreviewMode: "temporary",
       result: null,
       detectedLanguages: [],
       provider: null,
@@ -192,7 +194,7 @@ test("AnalysisWorker: успешное выполнение → complete + ре�
   assert.equal(pipeline.executeCalls[0]?.files.length, 1);
   assert.equal(pipeline.executeCalls[0]?.files[0]?.index, 0);
   assert.equal(pipeline.executeCalls[0]?.manifest, null);
-  assert.deepEqual(pipeline.executeCalls[0]?.previewPolicy, { mode: "no_preview", ttl: null });
+  assert.deepEqual(pipeline.executeCalls[0]?.previewPolicy, { mode: "temporary", ttl: { hours: 24 } });
 });
 
 test("AnalysisWorker: ошибка выполнения → fail с кодом", async () => {

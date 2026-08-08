@@ -54,13 +54,14 @@
     },
     "boundingBox": {
       "type": ["object", "null"],
+      "description": "Для изображения/PDF: обязательная точная рамка excerpt в долях страницы 0..1; null только для plain text или невидимого фрагмента.",
       "additionalProperties": false,
       "required": ["x", "y", "width", "height"],
       "properties": {
-        "x": { "type": "number", "minimum": 0, "maximum": 1 },
-        "y": { "type": "number", "minimum": 0, "maximum": 1 },
-        "width": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
-        "height": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 }
+        "x": { "type": "number", "minimum": 0, "maximum": 1, "description": "Левая граница / ширина страницы" },
+        "y": { "type": "number", "minimum": 0, "maximum": 1, "description": "Верхняя граница / высота страницы" },
+        "width": { "type": "number", "exclusiveMinimum": 0, "maximum": 1, "description": "Ширина рамки / ширина страницы" },
+        "height": { "type": "number", "exclusiveMinimum": 0, "maximum": 1, "description": "Высота рамки / высота страницы" }
       }
     },
     "task": {

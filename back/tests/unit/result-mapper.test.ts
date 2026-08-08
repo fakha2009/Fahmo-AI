@@ -64,6 +64,8 @@ function record(result: AnalysisResult): AnalysisRecord {
     sourceType: "image",
     documentType: "work_assignment",
     outputLanguage: "ru",
+    retentionMode: "temporary",
+    sourcePreviewMode: "temporary",
     result,
     detectedLanguages: ["ru"],
     provider: "openai",

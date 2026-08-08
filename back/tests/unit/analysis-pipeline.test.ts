@@ -34,6 +34,8 @@ class InMemoryAnalysisRepository implements AnalysisRepository {
       sourceType: input.sourceType,
       documentType: input.documentType,
       outputLanguage: input.outputLanguage,
+      retentionMode: input.retentionMode,
+      sourcePreviewMode: input.sourcePreviewMode,
       result: null,
       detectedLanguages: [],
       provider: null,

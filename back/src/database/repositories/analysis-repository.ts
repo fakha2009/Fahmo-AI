@@ -5,6 +5,8 @@ import {
   type AnalysisStatus as PrismaAnalysisStatus,
   type DocumentType as PrismaDocumentType,
   type OutputLanguage as PrismaOutputLanguage,
+  type RetentionMode as PrismaRetentionMode,
+  type SourcePreviewMode as PrismaSourcePreviewMode,
   type SourceType as PrismaSourceType,
 } from "@prisma/client";
 import { prisma } from "../client";
@@ -199,6 +201,8 @@ export function analysisToRecord(row: {
   source_type: PrismaSourceType;
   document_type: PrismaDocumentType;
   output_language: PrismaOutputLanguage;
+  retention_mode: PrismaRetentionMode;
+  source_preview_mode: PrismaSourcePreviewMode;
   structured_result: Prisma.JsonValue;
   detected_languages: string[];
   provider: string | null;
@@ -219,6 +223,8 @@ export function analysisToRecord(row: {
     sourceType: sourceType.fromPrisma(row.source_type),
     documentType: documentType.fromPrisma(row.document_type),
     outputLanguage: outputLanguage.fromPrisma(row.output_language),
+    retentionMode: retentionMode.fromPrisma(row.retention_mode),
+    sourcePreviewMode: sourcePreviewMode.fromPrisma(row.source_preview_mode),
     result:
       row.structured_result === null
         ? null

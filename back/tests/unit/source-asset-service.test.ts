@@ -56,6 +56,8 @@ class FakeAnalysisRepository implements AnalysisRepository {
           sourceType: "image",
           documentType: "other",
           outputLanguage: "ru",
+          retentionMode: "temporary",
+          sourcePreviewMode: "temporary",
           result: null,
           detectedLanguages: [],
           provider: null,

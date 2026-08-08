@@ -6,6 +6,7 @@ import type { AnalysisInputRepository } from "./analysis-input-repository";
 import { toInputEnvelopes } from "./analysis-input-repository";
 import type { AnalysisRecord, AnalysisRepository } from "./analysis-repository";
 import type { ClaimedJob, JobRepository } from "./job-repository";
+import { previewPolicyFor } from "../../preview/domain/policy";
 
 export const WORKER_DEFAULT_POLL_MS = 2_000;
 export const WORKER_DEFAULT_CANCEL_POLL_MS = 1_500;
@@ -84,6 +85,14 @@ export class AnalysisWorker {
     }
 
     try {
+      const analysis = await this.deps.repository.get(analysisId);
+      if (analysis === null) {
+        throw new AppError({
+          code: "NOT_FOUND",
+          message: "Анализ не найден",
+          params: { analysisId },
+        });
+      }
       const inputs = await this.deps.inputs.listForAnalysis(analysisId);
       if (inputs.length === 0) {
         throw new AppError({
@@ -102,7 +111,7 @@ export class AnalysisWorker {
           analysisId,
           files: envelopes,
           manifest: null,
-          previewPolicy: { mode: "no_preview", ttl: null },
+          previewPolicy: previewPolicyFor(analysis.sourcePreviewMode),
         });
       } finally {
         clearInterval(watcher);

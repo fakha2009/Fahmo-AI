@@ -34,6 +34,8 @@ export interface AnalysisRecord {
   sourceType: SourceType;
   documentType: DocumentType;
   outputLanguage: OutputLanguage;
+  retentionMode: RetentionMode;
+  sourcePreviewMode: SourcePreviewMode;
   result: AnalysisResult | null;
   detectedLanguages: string[];
   provider: string | null;
