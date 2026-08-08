@@ -31,11 +31,19 @@ export function sendNoContent(input: ResponseInput): void {
 
 export function sendErrorResponse(input: ResponseInput & { error: unknown }): void {
   const appError = toAppError(input.error);
+  const status = statusFor(appError);
   if (appError.code === "INTERNAL_ERROR") {
     console.error(
       `[${input.rc.requestId}] INTERNAL_ERROR:`,
       appError.cause instanceof Error ? appError.cause.stack ?? appError.cause.message : appError.cause
     );
+  } else {
+    console.warn(`[http:error] ${JSON.stringify({
+      requestId: input.rc.requestId,
+      status,
+      code: appError.code,
+      messageKey: appError.messageKey,
+    })}`);
   }
   const body: ErrorResponse = {
     error: {
@@ -48,7 +56,7 @@ export function sendErrorResponse(input: ResponseInput & { error: unknown }): vo
       details: appError.details ?? null,
     },
   };
-  sendJson({ ...input, status: statusFor(appError), body });
+  sendJson({ ...input, status, body });
 }
 
 export function statusFor(error: AppError): number {

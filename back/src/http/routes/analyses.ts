@@ -68,6 +68,7 @@ const SettingsSchema = z
 const RemotePageSchema = z
   .object({
     id: z.string().min(1).max(100),
+    sourceId: z.string().min(1).max(100).optional(),
     order: z.number().int().min(0),
     rotation: z.number().int().multipleOf(90).min(0).max(270).optional(),
     kind: z.enum(["image", "pdf", "text"]),
@@ -78,11 +79,17 @@ const RemotePageSchema = z
 
 const RemotePagesSchema = z.array(RemotePageSchema).min(1).max(100);
 
+const RemoteSourcesSchema = z.array(z.object({
+  id: z.string().min(1).max(100),
+  kind: z.enum(["image", "pdf", "text"]),
+}).strict()).min(1).max(100);
+
 export interface UploadUnit {
   filename: string;
   contentType: string;
   buffer: Buffer;
   kind: "image" | "pdf" | "text";
+  sourceId: string | null;
 }
 
 export const createAnalysisRoute: RouteHandler = async ({ req, res, ctx, rc }) => {
@@ -125,7 +132,17 @@ export const createAnalysisRoute: RouteHandler = async ({ req, res, ctx, rc }) =
     throw new AppError({ code: "VALIDATION_ERROR", message: "Некорректное поле pages" });
   }
 
-  const uploads = buildUploads(multipart.files);
+  const sourcesText = multipart.fields.get("sources");
+  let sources: z.infer<typeof RemoteSourcesSchema> | null = null;
+  if (sourcesText !== undefined) {
+    try {
+      sources = RemoteSourcesSchema.parse(JSON.parse(sourcesText));
+    } catch {
+      throw new AppError({ code: "VALIDATION_ERROR", message: "Некорректное поле sources" });
+    }
+  }
+
+  const uploads = buildUploads(multipart.files, sources);
   if (uploads.length === 0) {
     throw new AppError({ code: "VALIDATION_ERROR", message: "Запрос не содержит файлов" });
   }
@@ -235,8 +252,20 @@ export const cancelAnalysisRoute: RouteHandler = async ({ res, ctx, rc, params }
   if (record === null || !belongsTo(record, session.session.id)) {
     throw new AppError({ code: "NOT_FOUND", message: "Анализ не найден" });
   }
-  await ctx.analysisController.cancel(record.id, "user");
-  sendNoContent({ res, rc });
+  const cancelled = await ctx.analysisController.cancel(record.id, "user");
+  if (cancelled) {
+    sendNoContent({ res, rc });
+    return;
+  }
+
+  // Completion may win the race with cancellation. Return the latest state so
+  // clients preserve the valid result instead of handling an expected 409.
+  const current = await ctx.analysisRepository.get(record.id);
+  if (current === null || !belongsTo(current, session.session.id)) {
+    throw new AppError({ code: "NOT_FOUND", message: "Анализ не найден" });
+  }
+  const tasks = current.result === null ? [] : await ctx.taskRepository.listByAnalysis(current.id);
+  sendJson({ res, rc, body: statusResponse(current, tasks) });
 };
 
 export const deleteAnalysisRoute: RouteHandler = async ({ res, ctx, rc, params }) => {
@@ -296,7 +325,7 @@ export const analysisEventsRoute: RouteHandler = async ({ req, res, ctx, rc, par
   }
 };
 
-function buildUploads(parts: MultipartFilePart[]): UploadUnit[] {
+function buildUploads(parts: MultipartFilePart[], sources: z.infer<typeof RemoteSourcesSchema> | null): UploadUnit[] {
   const uploads: UploadUnit[] = [];
   for (const part of parts) {
     if (part.name !== "files" && part.name !== "texts") {
@@ -314,7 +343,11 @@ function buildUploads(parts: MultipartFilePart[]): UploadUnit[] {
       contentType: part.contentType,
       buffer: part.buffer,
       kind,
+      sourceId: sources?.[uploads.length]?.id ?? null,
     });
+  }
+  if (sources !== null && sources.length !== uploads.length) {
+    throw new AppError({ code: "VALIDATION_ERROR", message: "Количество источников не соответствует файлам" });
   }
   return uploads;
 }
@@ -332,7 +365,11 @@ export function normalizeTextUploadFilename(filename: string, index = 0): string
  * image-страница → следующий image-файл, text-страница → следующий text-файл,
  * pdf-страница → следующий pdf-файл (первая страница файла) или тот же файл.
  */
-function buildManifest(pages: z.infer<typeof RemotePagesSchema>, uploads: UploadUnit[]): InputManifest {
+export function buildManifest(pages: z.infer<typeof RemotePagesSchema>, uploads: UploadUnit[]): InputManifest {
+  if (pages.every((page) => page.sourceId !== undefined) && uploads.every((upload) => upload.sourceId !== null)) {
+    return buildManifestBySourceId(pages, uploads);
+  }
+
   const imageQueue = uploads.map((upload, index) => ({ upload, index })).filter((item) => item.upload.kind === "image");
   const textQueue = uploads.map((upload, index) => ({ upload, index })).filter((item) => item.upload.kind === "text");
   const pdfQueue = uploads.map((upload, index) => ({ upload, index })).filter((item) => item.upload.kind === "pdf");
@@ -412,6 +449,39 @@ function buildManifest(pages: z.infer<typeof RemotePagesSchema>, uploads: Upload
       message: "Некорректный манифест страниц",
       details: parsed.error.issues,
     });
+  }
+  return parsed.data;
+}
+
+function buildManifestBySourceId(pages: z.infer<typeof RemotePagesSchema>, uploads: UploadUnit[]): InputManifest {
+  const uploadBySourceId = new Map(uploads.map((upload, index) => [upload.sourceId, { upload, index }]));
+  const usedUploadIndexes = new Set<number>();
+  const items = [...pages].sort((a, b) => a.order - b.order).map((page) => {
+    const source = uploadBySourceId.get(page.sourceId ?? null);
+    if (source === undefined || source.upload.kind !== page.kind) {
+      throw new AppError({
+        code: "VALIDATION_ERROR",
+        message: "Страница не соответствует источнику",
+        params: { pageId: page.id, sourceId: page.sourceId ?? "" },
+      });
+    }
+    usedUploadIndexes.add(source.index);
+    return {
+      clientPageId: page.id,
+      fileIndex: source.index,
+      sourcePageNumber: page.sourcePage ?? 1,
+      finalOrder: page.order,
+      rotation: page.rotation ?? 0,
+      crop: null,
+    };
+  });
+
+  if (usedUploadIndexes.size !== uploads.length) {
+    throw new AppError({ code: "VALIDATION_ERROR", message: "Часть файлов не привязана к страницам" });
+  }
+  const parsed = InputManifestSchema.safeParse(items);
+  if (!parsed.success) {
+    throw new AppError({ code: "VALIDATION_ERROR", message: "Некорректный манифест страниц", details: parsed.error.issues });
   }
   return parsed.data;
 }

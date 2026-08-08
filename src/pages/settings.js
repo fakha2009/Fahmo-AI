@@ -1,6 +1,7 @@
 import { dbClear, exportDatabase } from '../core/db.js';
 import { setLanguage, t } from '../core/i18n.js';
 import { getSettings, isApiConfigurationLocked, updateSettings } from '../core/settings.js';
+import { navigate } from '../core/router.js';
 import { downloadBlob, escapeAttribute, escapeHtml } from '../core/utils.js';
 import { confirmDialog } from '../ui/dialogs.js';
 import { icon } from '../ui/icons.js';
@@ -154,14 +155,7 @@ async function deleteHistory() {
 }
 
 async function installApp() {
-  const prompt = window.__fahmoInstallPrompt;
-  if (prompt) {
-    await prompt.prompt();
-    await prompt.userChoice.catch(() => null);
-    window.__fahmoInstallPrompt = null;
-  } else {
-    showToast({ title: t('installUnavailable'), type: 'info' });
-  }
+  navigate('/install');
 }
 
 async function checkUpdate() {

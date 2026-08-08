@@ -28,3 +28,8 @@ test('manifest references only the refreshed icon set', async () => {
   assert.ok(sources.every((source) => source.includes('-v2.png')));
   assert.ok(manifest.icons.some((icon) => icon.purpose === 'maskable'));
 });
+
+test('PWA installation uses the browser prompt without suppressing its banner', async () => {
+  const appSource = await readFile(new URL('../src/app.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(appSource, /beforeinstallprompt[\s\S]{0,160}preventDefault/u);
+});

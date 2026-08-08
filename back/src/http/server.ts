@@ -4,7 +4,7 @@ import type { EnvConfig } from "../config";
 import type { AppContext } from "./context";
 import { Router } from "./router";
 import { applyCors, handlePreflight, isPreflight, isTrustedRequestOrigin } from "./cors";
-import { healthRoute, readyRoute } from "./routes/health";
+import { faviconRoute, healthRoute, readyRoute } from "./routes/health";
 import {
   analysisEventsRoute,
   cancelAnalysisRoute,
@@ -56,12 +56,14 @@ export class FahmoHttpServer {
   }
 
   private registerRoutes(): void {
+    this.router.get("/favicon.ico", faviconRoute);
     this.router.get("/api/health", healthRoute);
     this.router.get("/api/ready", readyRoute);
     this.router.get("/api/v1/session", sessionRoute);
     this.router.get("/api/v1/analyses", listAnalysesRoute);
     this.router.post("/api/v1/analyses", createAnalysisRoute);
     this.router.get("/api/v1/analyses/:analysisId", getAnalysisRoute);
+    this.router.get("/api/v1/analyses/:analysisId/cancel", getAnalysisRoute);
     this.router.delete("/api/v1/analyses/:analysisId", deleteAnalysisRoute);
     this.router.post("/api/v1/analyses/:analysisId/cancel", cancelAnalysisRoute);
     this.router.get("/api/v1/analyses/:analysisId/events", analysisEventsRoute);

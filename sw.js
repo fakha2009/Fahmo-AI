@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'fahmo-ai-v1.4.0';
+const CACHE_VERSION = 'fahmo-ai-v1.6.0';
 const APP_SHELL = [
   '/',
   '/index.html',
@@ -123,11 +123,12 @@ self.addEventListener('fetch', (event) => {
   if (request.mode === 'navigate') {
     event.respondWith(
       fetch(request)
-        .then((response) => {
+        .then(async (response) => {
           if (response.ok) {
             event.waitUntil(cacheResponse('/index.html', response));
+            return response;
           }
-          return response;
+          return (await caches.match('/index.html')) ?? (await caches.match('/')) ?? response;
         })
         .catch(async () => (await caches.match('/index.html')) ?? (await caches.match('/')) ?? unavailableResponse(request))
     );

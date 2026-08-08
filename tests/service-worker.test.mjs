@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import vm from 'node:vm';
 
-async function loadFetchHandler({ cachedIndex = null } = {}) {
+async function loadFetchHandler({ cachedIndex = null, networkResponse = null } = {}) {
   const listeners = new Map();
   const source = await readFile(new URL('../sw.js', import.meta.url), 'utf8');
   const self = {
@@ -21,7 +21,10 @@ async function loadFetchHandler({ cachedIndex = null } = {}) {
     URL,
     Response,
     caches,
-    fetch: async () => { throw new TypeError('offline'); },
+    fetch: async () => {
+      if (networkResponse) return networkResponse.clone();
+      throw new TypeError('offline');
+    },
     self,
   });
   new vm.Script(source, { filename: 'sw.js' }).runInContext(context);
@@ -51,4 +54,12 @@ test('service worker uses the cached app shell for offline deep links', async ()
   const response = await dispatchNavigation(await loadFetchHandler({ cachedIndex: cached }));
   assert.equal(response.status, 200);
   assert.match(await response.text(), /Fahmo AI/u);
+});
+
+test('service worker hides transient navigation errors behind the cached app shell', async () => {
+  const cached = new Response('<!doctype html><title>Fahmo AI cached</title>', { headers: { 'Content-Type': 'text/html' } });
+  const unavailable = new Response('Service Unavailable', { status: 503 });
+  const response = await dispatchNavigation(await loadFetchHandler({ cachedIndex: cached, networkResponse: unavailable }));
+  assert.equal(response.status, 200);
+  assert.match(await response.text(), /cached/u);
 });

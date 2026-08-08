@@ -26,13 +26,7 @@ registerRoute('/not-found', notFoundPage);
 
 let reloadForServiceWorkerUpdate = false;
 
-window.addEventListener('beforeinstallprompt', (event) => {
-  event.preventDefault();
-  window.__fahmoInstallPrompt = event;
-});
-
 window.addEventListener('appinstalled', () => {
-  window.__fahmoInstallPrompt = null;
   showToast({ title: t('installApp'), message: t('ready'), type: 'success' });
 });
 

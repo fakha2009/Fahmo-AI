@@ -160,15 +160,53 @@ export function textUploadFilename(name) {
   return /\.txt$/iu.test(normalized) ? normalized : `${normalized}.txt`;
 }
 
-export async function createRemoteAnalysis({ baseUrl, analysis, signal }) {
+function remoteUploadFilename(source, index) {
+  const name = typeof source.name === 'string' ? source.name.trim() : '';
+  if (/\.(?:pdf|jpe?g|png|webp|txt)$/iu.test(name)) return name;
+  const extension = ({
+    'application/pdf': 'pdf',
+    'image/jpeg': 'jpg',
+    'image/png': 'png',
+    'image/webp': 'webp',
+    'text/plain': 'txt',
+  })[source.mimeType] ?? (source.kind === 'text' ? 'txt' : 'bin');
+  return `${name || `document-${index + 1}`}.${extension}`;
+}
+
+function uploadBlob(source) {
+  if (!source.blob) return null;
+  const contentType = source.mimeType || source.blob.type;
+  if (!contentType || source.blob.type === contentType) return source.blob;
+  return source.blob.slice(0, source.blob.size, contentType);
+}
+
+export function buildRemoteAnalysisForm(analysis) {
   const form = new FormData();
   form.set('clientAnalysisId', analysis.id);
   form.set('settings', JSON.stringify(analysis.settings));
-  form.set('pages', JSON.stringify(analysis.pages.map(({ id, order, rotation, kind, sourcePage }) => ({ id, order, rotation, kind, sourcePage }))));
-  for (const source of analysis.sources ?? []) {
-    if (source.blob) form.append('files', source.blob, source.name);
-    else if (source.text) form.append('texts', new Blob([source.text], { type: 'text/plain' }), textUploadFilename(source.name));
+  form.set('pages', JSON.stringify(analysis.pages.map(({ id, sourceId, order, rotation, kind, sourcePage }) => ({ id, sourceId, order, rotation, kind, sourcePage }))));
+  const uploadSources = [];
+  for (const [index, source] of (analysis.sources ?? []).entries()) {
+    const blob = uploadBlob(source);
+    if (blob) {
+      form.append(source.kind === 'text' ? 'texts' : 'files', blob, remoteUploadFilename(source, index));
+    } else if (source.text) {
+      form.append('texts', new Blob([source.text], { type: 'text/plain' }), textUploadFilename(source.name));
+    } else {
+      continue;
+    }
+    uploadSources.push({ id: source.id, kind: source.kind });
   }
+  form.set('sources', JSON.stringify(uploadSources));
+  const uploadedIds = new Set(uploadSources.map((source) => source.id));
+  if (!analysis.pages.length || analysis.pages.some((page) => !page.sourceId || !uploadedIds.has(page.sourceId))) {
+    throw new ApiError('Не удалось прочитать один из источников. Добавьте документ ещё раз.', { code: 'MISSING_SOURCE' });
+  }
+  return form;
+}
+
+export async function createRemoteAnalysis({ baseUrl, analysis, signal }) {
+  const form = buildRemoteAnalysisForm(analysis);
   return fahmoApiClient(baseUrl).request('/analyses', {
     method: 'POST', body: form, idempotencyKey: analysis.idempotencyKey, signal, timeoutMs: 120_000,
   });

@@ -47,14 +47,8 @@ export class AnalysisController {
     if (record === null) {
       throw new AppError({ code: "NOT_FOUND", message: "Анализ не найден" });
     }
-    const cancelled = await this.deps.pipeline.cancel(analysisId, reason);
-    if (!cancelled) {
-      throw new AppError({
-        code: "ANALYSIS_NOT_READY",
-        message: "Анализ уже завершён или отменён",
-        params: { status: record.status },
-      });
-    }
-    return true;
+    // Completion may legitimately win a race with the user's click. Returning
+    // false keeps cancellation idempotent while a missing analysis still fails.
+    return this.deps.pipeline.cancel(analysisId, reason);
   }
 }

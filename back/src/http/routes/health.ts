@@ -1,5 +1,9 @@
 import type { RouteHandler } from "../router";
-import { sendJson } from "../responses";
+import { sendJson, sendNoContent } from "../responses";
+
+export const faviconRoute: RouteHandler = async ({ res, rc }) => {
+  sendNoContent({ res, rc });
+};
 
 export const healthRoute: RouteHandler = async ({ res, rc }) => {
   sendJson({

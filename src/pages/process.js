@@ -11,6 +11,7 @@ import { renderShell } from '../ui/shell.js';
 
 let controller;
 let activeAnalysisId;
+let cancellingAnalysisId;
 
 const stageOrder = ['read', 'find', 'verify', 'tasks'];
 const stageLabels = { read: 'processRead', find: 'processFind', verify: 'processVerify', tasks: 'processTasks' };
@@ -76,14 +77,17 @@ function renderProcess(analysis, options = {}) {
   const failed = analysis.status === 'failed';
   const completed = analysis.status === 'completed' || analysis.status === 'needs_clarification';
   const cancelled = analysis.status === 'cancelled';
+  const cancelling = cancellingAnalysisId === analysis.id;
   renderShell({
     title: t('processTitle'),
     currentPath: `/analyze/${analysis.id}`,
     content: `
       <div class="process-shell">
         <section class="card process-card">
-          <img class="process-mascot theme-image--light" src="/public/assets/mascot-light.webp" alt="">
-          <img class="process-mascot theme-image--dark" src="/public/assets/mascot-dark.webp" alt="">
+          <div class="process-mascot-wrap" data-active="${!completed && !failed && !cancelled}" aria-hidden="true">
+            <img class="process-mascot process-mascot--gif" src="/public/assets/mascot-analyzing.gif" alt="">
+            <img class="process-mascot process-mascot--still" src="/public/assets/icon-192-v2.png" alt="">
+          </div>
           <h1>${escapeHtml(failed ? t('errorTitle') : cancelled ? t('statusCancelled') : completed ? t('statusCompleted') : t('processTitle'))}</h1>
           <p>${escapeHtml(failed ? (analysis.error?.message || t('genericError')) : cancelled ? t('statusCancelled') : completed ? t('saved') : t('processSubtitle'))}</p>
           <div class="progress-track" aria-label="${progress}%"><div class="progress-bar" style="--progress:${progress}%"></div></div>
@@ -98,7 +102,7 @@ function renderProcess(analysis, options = {}) {
           <div class="process-actions">
             ${completed ? `<button class="button button--primary" type="button" data-open-result>${icon('arrowRight')} ${escapeHtml(t('openResult'))}</button>` : ''}
             ${failed ? `<button class="button button--primary" type="button" data-retry>${icon('refresh')} ${escapeHtml(t('retry'))}</button>` : ''}
-            ${!completed && !failed && !cancelled ? `<button class="button button--ghost" type="button" data-cancel-analysis>${escapeHtml(t('cancel'))}</button>` : ''}
+            ${!completed && !failed && !cancelled ? `<button class="button button--ghost" type="button" data-cancel-analysis ${cancelling ? 'disabled aria-busy="true"' : ''}>${escapeHtml(t(cancelling ? 'cancelling' : 'cancel'))}</button>` : ''}
             <a class="button button--secondary" href="/" data-router>${escapeHtml(t('backHome'))}</a>
           </div>
         </section>
@@ -229,17 +233,57 @@ async function runAnalysis(analysis) {
   }
 }
 
-async function cancelAnalysis(analysis) {
-  controller?.abort();
-  if (analysis.settings?.provider === 'remote' && analysis.remoteId) {
-    try {
-      await cancelRemoteAnalysis(getSettings().apiBaseUrl, analysis.remoteId, analysis.idempotencyKey);
-    } catch { /* cancellation remains local if backend is unreachable */ }
+async function applyCancellationStatus(analysis, payload) {
+  const status = payload?.status ?? payload?.data?.status;
+  if (status === 'completed' || status === 'succeeded') {
+    analysis.result = normalizeRemoteResult(payload, analysis);
+    analysis.title = analysis.result.title;
+    await updateProgress(analysis, { status: 'completed', progressStep: 'tasks', progress: 100, completedAt: new Date().toISOString() });
+    return true;
   }
-  analysis.status = 'cancelled';
-  analysis.progress = analysis.progress ?? 0;
-  await saveAnalysis(analysis);
+  if (status === 'needs_clarification') {
+    analysis.result = normalizeRemoteResult(payload, analysis);
+    analysis.title = analysis.result.title;
+    await updateProgress(analysis, { status: 'needs_clarification', progressStep: 'verify', progress: Math.max(70, Number(payload.progress) || 70) });
+    return true;
+  }
+  if (status === 'cancelled') {
+    analysis.status = 'cancelled';
+    analysis.progress = Number(payload.progress) || analysis.progress || 0;
+    await saveAnalysis(analysis);
+    return true;
+  }
+  return false;
+}
+
+async function cancelAnalysis(analysis) {
+  if (cancellingAnalysisId === analysis.id) return;
+  cancellingAnalysisId = analysis.id;
   renderProcess(analysis);
+
+  try {
+    let payload = null;
+    if (analysis.settings?.provider === 'remote' && analysis.remoteId) {
+      const baseUrl = getSettings().apiBaseUrl;
+      try {
+        payload = await cancelRemoteAnalysis(baseUrl, analysis.remoteId, analysis.idempotencyKey);
+      } catch {
+        try {
+          payload = await getRemoteAnalysis(baseUrl, analysis.remoteId);
+        } catch { /* cancellation remains local if the backend is unreachable */ }
+      }
+    }
+
+    controller?.abort();
+    if (await applyCancellationStatus(analysis, payload)) return;
+
+    analysis.status = 'cancelled';
+    analysis.progress = analysis.progress ?? 0;
+    await saveAnalysis(analysis);
+  } finally {
+    if (cancellingAnalysisId === analysis.id) cancellingAnalysisId = null;
+    if (activeAnalysisId === analysis.id) renderProcess(analysis);
+  }
 }
 
 async function retryAnalysis(analysis) {

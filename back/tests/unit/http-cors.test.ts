@@ -14,6 +14,7 @@ test('trusted CORS origin receives credentialed PATCH support', () => {
 
   assert.equal(headers.get('Access-Control-Allow-Origin'), allowedOrigins[0]);
   assert.match(headers.get('Access-Control-Allow-Methods') ?? '', /PATCH/u);
+  assert.match(headers.get('Access-Control-Allow-Headers') ?? '', /If-Match/u);
   assert.equal(headers.get('Access-Control-Allow-Credentials'), 'true');
 });
 

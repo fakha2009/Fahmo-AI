@@ -121,6 +121,91 @@ test('tasks can be created, edited, completed, and restored on this device', asy
 });
 });
 
+test.describe('remote cancellation race', () => {
+test.use({ serviceWorkers: 'block' });
+
+test('a double cancel preserves a result that completed concurrently', async ({ page }) => {
+  let cancelRequests = 0;
+  await page.route('**/config.js', (route) => route.fulfill({
+    contentType: 'text/javascript',
+    body: `window.__FAHMO_CONFIG__ = Object.freeze({ apiBaseUrl: 'https://api.test', apiPrefix: '/api/v1', apiMode: 'http', environment: 'test', allowApiSettings: false, appVersion: '1.1.0' });`,
+  }));
+  await page.route('https://api.test/api/v1/analyses/remote-race**', async (route) => {
+    if (route.request().method() === 'POST' && route.request().url().endsWith('/cancel')) {
+      cancelRequests += 1;
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      await route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({
+          analysisId: 'remote-race',
+          status: 'completed',
+          stage: 'completed',
+          progress: 100,
+          updatedAt: new Date().toISOString(),
+          result: {
+            title: 'Completed during cancellation',
+            documentType: 'other',
+            resultLanguage: 'ru',
+            createdAt: new Date().toISOString(),
+            summary: 'The result is ready.',
+            simpleSummary: 'The result is ready.',
+            tasks: [],
+            importantData: [],
+            clarifications: [],
+            warnings: [],
+          },
+        }),
+      });
+      return;
+    }
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ analysisId: 'remote-race', status: 'processing', stage: 'analyzing', progress: 64, updatedAt: new Date().toISOString() }),
+    });
+  });
+
+  await page.goto('/');
+  await page.evaluate(async () => {
+    const { dbPut } = await import('/src/core/db.js');
+    const now = new Date().toISOString();
+    await dbPut('analyses', {
+      id: 'local-race',
+      remoteId: 'remote-race',
+      title: 'Race test',
+      createdAt: now,
+      updatedAt: now,
+      status: 'processing',
+      progress: 50,
+      progressStep: 'find',
+      idempotencyKey: 'idem-race-test',
+      settings: { provider: 'remote', resultLanguage: 'ru', documentType: 'other' },
+      sources: [],
+      pages: [],
+    });
+  });
+  await page.goto('/analyze/local-race');
+  const cancelButton = page.locator('[data-cancel-analysis]');
+  await expect(cancelButton).toBeEnabled();
+  const animatedMascot = page.locator('.process-mascot--gif');
+  await expect(animatedMascot).toBeVisible();
+  expect(await animatedMascot.evaluate((image) => ({ width: image.naturalWidth, complete: image.complete }))).toEqual({ width: 320, complete: true });
+  expect(await page.locator('.process-mascot-wrap').evaluate((element) => getComputedStyle(element).animationName)).toBe('process-alive');
+  await page.evaluate(() => {
+    const button = document.querySelector('[data-cancel-analysis]');
+    button.click();
+    button.click();
+  });
+  await expect(page.locator('[data-open-result]')).toBeVisible();
+  expect(cancelRequests).toBe(1);
+  const stored = await page.evaluate(async () => {
+    const { dbGet } = await import('/src/core/db.js');
+    const analysis = await dbGet('analyses', 'local-race');
+    return { status: analysis.status, title: analysis.result?.title };
+  });
+  expect(stored).toEqual({ status: 'completed', title: 'Completed during cancellation' });
+});
+});
+
 test('production remote analysis reaches a server result with a durable source', async ({ page }, testInfo) => {
   test.skip(process.env.PLAYWRIGHT_REMOTE_FLOW !== '1', 'Runs only against the deployed production stack');
   test.skip(testInfo.project.name !== 'desktop-chrome', 'Production AI flow runs once');

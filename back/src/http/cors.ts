@@ -4,7 +4,7 @@ export interface CorsOptions {
   allowedOrigins: string[];
 }
 
-const ALLOWED_HEADERS = ["Content-Type", "X-Request-ID", "Idempotency-Key", "X-Session-Token"];
+const ALLOWED_HEADERS = ["Content-Type", "X-Request-ID", "Idempotency-Key", "X-Session-Token", "If-Match"];
 const ALLOWED_METHODS = ["GET", "POST", "PATCH", "DELETE", "OPTIONS"];
 const EXPOSED_HEADERS = ["X-Request-ID", "X-Session-Token"];
 

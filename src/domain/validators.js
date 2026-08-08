@@ -10,6 +10,15 @@ export const ACCEPTED_TYPES = new Set([
 ]);
 
 const acceptedExtensions = new Set(['pdf', 'jpg', 'jpeg', 'png', 'webp', 'txt']);
+const extensionMimeTypes = {
+  pdf: 'application/pdf',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+  txt: 'text/plain'
+};
+const mimeAliases = { 'image/jpg': 'image/jpeg', 'application/x-pdf': 'application/pdf', 'text/x-plain': 'text/plain' };
 
 export function getExtension(filename = '') {
   const index = filename.lastIndexOf('.');
@@ -17,15 +26,16 @@ export function getExtension(filename = '') {
 }
 
 export function inferMimeType(file) {
-  if (file.type) return file.type.toLowerCase();
+  const declared = mimeAliases[file.type?.toLowerCase()] ?? file.type?.toLowerCase() ?? '';
+  if (ACCEPTED_TYPES.has(declared)) return declared;
   const extension = getExtension(file.name);
-  return ({ pdf: 'application/pdf', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', txt: 'text/plain' })[extension] ?? '';
+  return extensionMimeTypes[extension] ?? '';
 }
 
 export function validateFile(file) {
   const mime = inferMimeType(file);
   const extension = getExtension(file.name);
-  if (!ACCEPTED_TYPES.has(mime) && !acceptedExtensions.has(extension)) {
+  if (!ACCEPTED_TYPES.has(mime) || (extension && !acceptedExtensions.has(extension))) {
     return { ok: false, code: 'INVALID_FORMAT', messageKey: 'invalidFormat' };
   }
   if (file.size > MAX_FILE_SIZE) {
